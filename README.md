@@ -252,3 +252,22 @@ MIT
 If you have only one minute, read the opening principle, then inspect the architecture and verification/testing sections. The project is intentionally documented around **what the system can demonstrate**, not what it is intended to become.
 
 </details>
+
+<details>
+<summary><strong>🔎 Interactive screening map</strong></summary>
+
+```mermaid
+flowchart LR
+    S[Source] --> P[Preview]
+    P --> I[Explicit import]
+    I --> X[Canonical pipeline]
+    X --> E[Evidence]
+    E --> R[Recommendation]
+    R --> H[Human review]
+    H --> D[Human decision]
+    AI[Optional AI] -. advisory .-> H
+```
+
+**Recommendation and human decision remain separate.**
+
+</details>
