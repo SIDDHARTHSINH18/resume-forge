@@ -1,5 +1,12 @@
 # ResumeForge
 
+<details>
+<summary><strong>⚡ Quick navigation</strong></summary>
+
+**Explore:** [What it is](#what-it-is) · [Architecture](#architecture) · [Capabilities](#current-capabilities) · [Engineering evidence](#engineering-evidence) · [Security](#security-boundary) · [Run locally](#development)
+
+</details>
+
 **Evidence-first candidate screening with human-controlled decisions.**
 
 ResumeForge is a local-first screening platform for recruitment and college admissions. It turns resumes into structured evidence, applies a deterministic screening model, optionally adds AI analysis, and leaves the final decision to a human reviewer.
@@ -237,3 +244,11 @@ See [docs/architecture.md](docs/architecture.md) for the system boundaries and d
 ## License
 
 MIT
+
+
+<details>
+<summary><strong>👀 Reading this repository</strong></summary>
+
+If you have only one minute, read the opening principle, then inspect the architecture and verification/testing sections. The project is intentionally documented around **what the system can demonstrate**, not what it is intended to become.
+
+</details>
