@@ -1,0 +1,35 @@
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local runtime data (SQLite DB, uploaded resumes, saved config with API keys)
+backend/data/
+backend/demo_data/
+backend/data_dev_backup_*/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and scratch
+*.log
+logs/
+coverage/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
