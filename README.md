@@ -2,6 +2,8 @@
 
 **Evidence-First Candidate Screening**
 
+**Repository:** [github.com/SIDDHARTHSINH18/ResumeForge-](https://github.com/SIDDHARTHSINH18/ResumeForge-)
+
 ResumeForge is a local-first AI-assisted candidate screening platform that processes
 resumes, extracts structured candidate information, evaluates candidates against
 configurable criteria, provides evidence-backed screening results, and keeps the
