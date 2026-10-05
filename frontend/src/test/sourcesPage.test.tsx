@@ -72,7 +72,7 @@ function installMock(overrides: { cards?: unknown; preview?: unknown; importResu
     }
     if (url.startsWith(`/api/sources/${MOCK_ID}/syncs`)) {
       return res(200, {
-        source: { id: MOCK_ID, kind: "mock", display_name: "Mock source (testing only)" },
+        source: { id: MOCK_ID, kind: "mock", display_name: "Demo Inbox" },
         items: overrides.syncs ?? [],
       });
     }
@@ -104,9 +104,9 @@ describe("resume sources page", () => {
     expect(within(gmailCard).queryByRole("button", { name: /Connect Gmail account/ })).toBeNull();
 
     // The local fixture inbox is clearly labelled as a mock source.
-    const mockCard = screen.getByText("Mock source (testing only)").closest("section") as HTMLElement;
-    expect(within(mockCard).getByText("MOCK SOURCE — testing only")).toBeInTheDocument();
-    expect(within(mockCard).getByText(/never presented as Gmail/)).toBeInTheDocument();
+    const mockCard = screen.getByText("Demo Inbox").closest("section") as HTMLElement;
+    expect(within(mockCard).getByText("Demo Inbox — sample data")).toBeInTheDocument();
+    expect(within(mockCard).getAllByText(/not connected to a real email account/).length).toBeGreaterThan(0);
 
     // LinkedIn is honestly unavailable with an explanation and no action button.
     const linkedInCard = screen.getByText("LinkedIn").closest("section") as HTMLElement;

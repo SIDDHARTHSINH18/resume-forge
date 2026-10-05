@@ -189,9 +189,9 @@ def test_source_cards_show_honest_states(env):
     assert listing["gmail"]["id"] is not None
 
     assert listing["mock"]["state"] == "AVAILABLE"
-    assert listing["mock"]["display_name"] == "Mock source (testing only)"
+    assert listing["mock"]["display_name"] == "Demo Inbox"
     assert listing["mock"]["is_test_source"] is True
-    assert "MOCK SOURCE" in listing["mock"]["message"]
+    assert "sample messages" in listing["mock"]["message"]
 
     assert listing["linkedin"]["state"] == "UNAVAILABLE"
     assert listing["linkedin"]["message"] == LINKEDIN_MESSAGE
@@ -290,7 +290,7 @@ def test_mock_preview_classifies_duplicates_and_unsupported(env):
     assert counts["already_imported"] == 0
     assert body["status"] == "PREVIEWED"
     assert body["source"]["kind"] == "mock"
-    assert body["source"]["display_name"] == "Mock source (testing only)"
+    assert body["source"]["display_name"] == "Demo Inbox"
 
     items = {item["attachment_name"]: item for item in body["items"]}
     assert len(items) == 8
@@ -374,7 +374,7 @@ def test_mock_import_runs_the_existing_pipeline(env):
     assert job["status"] == "COMPLETED_WITH_ERRORS"
     assert job["completed"] == 5
     assert job["failed"] == 1
-    assert job["label"] == "Mock source (testing only) import — 6 file(s)"
+    assert job["label"] == "Demo Inbox import — 6 file(s)"
 
     listing = env.client.get(f"/api/candidates?profile_id={profile_id}").json()
     assert listing["total"] == 5
@@ -605,7 +605,7 @@ def test_audit_trail_records_intake_events(env):
     assert started["data"]["criteria"]["date_from"] == "2026-09-01"
 
     imported = [event for event in events if event["event_type"] == "resume_imported"]
-    assert all("Mock source (testing only)" in event["message"] for event in imported)
+    assert all("Demo Inbox" in event["message"] for event in imported)
 
     completed = next(event for event in events if event["event_type"] == "source_sync_completed")
     assert completed["data"]["imported"] == 6

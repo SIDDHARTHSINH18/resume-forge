@@ -175,7 +175,7 @@ function SourceCardHeader({ card, extra }: { card: ResumeSourceCard; extra?: Rea
           <span className="dot" />
           {sourceStateLabel(card.state)}
         </span>
-        {card.is_test_source && <span className="badge badge-warn">MOCK SOURCE — testing only</span>}
+        {card.is_test_source && <span className="badge badge-warn">Demo Inbox — sample data</span>}
         {card.account && <span className="badge badge-outline mono">{card.account}</span>}
       </span>
       {extra}
@@ -228,9 +228,9 @@ function MockCard({
 }) {
   return (
     <Card title={<SourceCardHeader card={card} />}>
-      <Notice kind="warn" icon="info">
-        This is a local fixture inbox for testing the intake flow end to end. Nothing here comes from
-        a real mailbox and it is never presented as Gmail.
+      <Notice kind="neutral" icon="info">
+        This is a built-in demo inbox for testing the resume intake workflow. Messages here are
+        sample data and are not connected to a real email account.
       </Notice>
       <p className="muted mt-1">{card.message}</p>
       <FetchPanel card={card} profiles={profiles} onChanged={onChanged} accent="neutral" />
@@ -318,7 +318,7 @@ function GmailCard({
 
       {!card.configured && (
         <div className="mt-3">
-          <div className="section-title">Google Cloud OAuth client</div>
+          <div className="section-title">Setup required — Google Cloud OAuth client</div>
           <div className="field-row field-row-3">
             <div className="field">
               <label className="field-label" htmlFor="gmail-client-id">

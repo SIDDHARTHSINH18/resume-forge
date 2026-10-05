@@ -378,10 +378,10 @@ export function sourceCardFixture(overrides: Partial<ResumeSourceCard> = {}): Re
   return {
     id: 2,
     kind: "mock",
-    display_name: "Mock source (testing only)",
+    display_name: "Demo Inbox",
     state: "AVAILABLE",
     account: null,
-    message: "Local test inbox with 9 fixture messages. Clearly labelled MOCK SOURCE.",
+    message: "Built-in demo inbox with 9 sample messages. Sample data only — not connected to a real email account.",
     detail: null,
     connectable: false,
     configured: true,
@@ -414,7 +414,7 @@ export function sourceItemFixture(overrides: Partial<SourceItemRow> = {}): Sourc
 export function sourcePreviewFixture(overrides: Partial<SourcePreview> = {}): SourcePreview {
   return {
     sync_id: 5,
-    source: { id: 2, kind: "mock", display_name: "Mock source (testing only)" },
+    source: { id: 2, kind: "mock", display_name: "Demo Inbox" },
     profile: { id: 1, title: "Backend Engineer" },
     criteria: { date_from: "2026-09-01", date_to: "2026-09-30", sender: "", keywords: ["resume"] },
     counts: {
@@ -458,7 +458,7 @@ export function sourcePreviewFixture(overrides: Partial<SourcePreview> = {}): So
 export function sourceImportFixture(overrides: Partial<SourceImportResult> = {}): SourceImportResult {
   return {
     sync_id: 5,
-    source: { id: 2, kind: "mock", display_name: "Mock source (testing only)" },
+    source: { id: 2, kind: "mock", display_name: "Demo Inbox" },
     profile: { id: 1, title: "Backend Engineer" },
     job_id: 7,
     imported: 1,

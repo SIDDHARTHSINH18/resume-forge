@@ -1,4 +1,4 @@
-"""Local test source (MOCK SOURCE) — deterministic, clearly labelled.
+"""Local demo source ("Demo Inbox") — deterministic, clearly labelled.
 
 This connector behaves exactly like a real intake source (search with real
 date/sender/keyword filtering, downloadable attachments, unsupported files,
@@ -6,8 +6,8 @@ duplicates) but the "inbox" is a fixed local fixture set built from the demo
 data files. It exists so the full fetch → preview → import flow can be
 exercised end to end without any external account.
 
-It is always presented as "Mock source (testing only)" — it is never
-presented as Gmail.
+It is presented to users as "Demo Inbox" — sample data, never a real
+mailbox and never presented as Gmail.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from .base import (
     within_range,
 )
 
-MOCK_DISPLAY_NAME = "Mock source (testing only)"
+MOCK_DISPLAY_NAME = "Demo Inbox"
 
 # Deterministic fixture inbox. Attachments reference generated demo files by
 # name; "inline_bytes" attachments carry synthetic payloads (e.g. an unsafe
@@ -110,8 +110,8 @@ class MockSource(ResumeSource):
         return SourceStatus(
             state="AVAILABLE",
             message=(
-                "Local test inbox with %d fixture messages. Clearly labelled MOCK SOURCE — "
-                "not a real mailbox and never presented as Gmail." % len(FIXTURE_MESSAGES)
+                "Built-in demo inbox with %d sample messages. Sample data only — not "
+                "connected to a real email account." % len(FIXTURE_MESSAGES)
             ),
         )
 
