@@ -1,12 +1,20 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+// Resume-Forge fixed dev ports (must not collide with ENMA/QResolve):
+//   frontend dev: 127.0.0.1:5421  (override with FRONTEND_PORT)
+//   backend:      127.0.0.1:8421  (override with BACKEND_PORT)
+const frontendPort = Number(process.env.FRONTEND_PORT) || 5421;
+const backendPort = Number(process.env.BACKEND_PORT) || 8421;
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5273,
+    host: "127.0.0.1",
+    port: frontendPort,
+    strictPort: true,
     proxy: {
-      "/api": { target: "http://127.0.0.1:8100" },
+      "/api": { target: `http://127.0.0.1:${backendPort}` },
     },
   },
   build: {

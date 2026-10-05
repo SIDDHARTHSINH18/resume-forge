@@ -1,10 +1,10 @@
-# ResumeForge
+# Resume-Forge
 
 **Evidence-First Candidate Screening**
 
-**Repository:** [github.com/SIDDHARTHSINH18/ResumeForge-](https://github.com/SIDDHARTHSINH18/ResumeForge-)
+**Repository:** [github.com/SIDDHARTHSINH18/Resume-Forge-](https://github.com/SIDDHARTHSINH18/Resume-Forge-)
 
-ResumeForge is a local-first AI-assisted candidate screening platform that processes
+Resume-Forge is a local-first AI-assisted candidate screening platform that processes
 resumes, extracts structured candidate information, evaluates candidates against
 configurable criteria, provides evidence-backed screening results, and keeps the
 final decision with a human reviewer.
@@ -12,7 +12,7 @@ final decision with a human reviewer.
 > **AI recommendations are advisory.**
 > **Human decisions are authoritative.**
 
-ResumeForge is *not* an autonomous hiring or rejection system. It never advances,
+Resume-Forge is *not* an autonomous hiring or rejection system. It never advances,
 rejects or closes a candidate on its own — it produces screening evidence, a
 deterministic score, an optional AI-assisted analysis and a recommendation label.
 A human reviewer makes every decision, and every action is recorded in an audit
@@ -94,7 +94,7 @@ Mock data is testing infrastructure, not a production integration.
 
 ## AI safety and the human decision
 
-ResumeForge deliberately separates:
+Resume-Forge deliberately separates:
 
 ```
 System recommendation
@@ -153,14 +153,64 @@ cd ..\scripts
 run_backend.bat
 ```
 
-Open http://127.0.0.1:8100
+Open http://127.0.0.1:8421
 
 Option B — development (hot reload):
 
 ```bat
-scripts\run_backend.bat    rem API on http://127.0.0.1:8100
-scripts\run_frontend.bat   rem UI on http://localhost:5273 (proxies /api)
+scripts\run_backend.bat    rem API on http://127.0.0.1:8421
+scripts\run_frontend.bat   rem UI on http://127.0.0.1:5421 (proxies /api)
 ```
+
+## DEMO (fixed ports — coexists with ENMA and QResolve)
+
+Resume-Forge owns exactly two ports and never touches ENMA (8000/5175/5177/8977)
+or QResolve (8321/5321):
+
+- Backend API: **127.0.0.1:8421** (source of truth: `scripts/run_backend.*`, override with `BACKEND_PORT`)
+- Frontend dev: **127.0.0.1:5421** (source of truth: `frontend/vite.config.ts`, override with `FRONTEND_PORT`; `strictPort` is on, so Vite fails loudly instead of hopping ports)
+
+Terminal 1 — backend:
+
+```bat
+scripts\run_backend.bat
+```
+
+Terminal 2 — frontend:
+
+```bat
+scripts\run_frontend.bat
+```
+
+Open **http://127.0.0.1:5421** (the dev server proxies `/api` to 8421). In
+production (`npm run build` + `run_backend.bat`) the backend serves the built
+UI same-origin on 8421.
+
+### 5-minute demo script
+
+1. Open http://127.0.0.1:5421 → **Screening Profiles** → **New profile**, pick
+   Recruitment, add a few required skills, save. (If a profile already exists,
+   open it instead.)
+2. On the profile page, click **Import demo resumes** — generates ~14 labelled
+   synthetic resumes (including one deliberately broken PDF) and ingests them
+   through the normal upload pipeline.
+3. **Processing** page — watch live batch progress; note the failed-file row for
+   the broken PDF with its reason.
+4. **Candidates** — filter/search, open one candidate to show per-requirement
+   match marks and the scoring breakdown; add a note and record a decision
+   (e.g. Move to Interview). Optionally show **Reviews** queue.
+5. **Exports** → **Export CSV** — download the shortlist and open it.
+
+### Known limitations
+
+- AI provider features (Settings → AI provider) require an API key or a local
+  endpoint; with none configured, scoring is deterministic-only and AI
+  summaries are unavailable. Use "Mock" for a safe demo of the AI surface.
+- Gmail intake needs a configured Google OAuth client — skip it live; use demo
+  resumes instead.
+- The demo dataset includes one intentionally corrupt PDF to demonstrate error
+  handling; its failure row on Processing is expected, not a bug.
+- Single-user local app: no auth, SQLite storage in `backend/data`.
 
 ## First steps
 
@@ -198,7 +248,7 @@ written to the audit log or exports.
 2. Configure the OAuth consent screen (External, testing is fine) and add your own
    Google account as a test user.
 3. Create an OAuth client of type **Web application** and add this authorised
-   redirect URI: `http://127.0.0.1:8100/api/sources/gmail/oauth/callback`
+   redirect URI: `http://127.0.0.1:8421/api/sources/gmail/oauth/callback`
 4. Paste the client ID and secret into Resume Sources → Gmail → Save OAuth client.
 5. Click **Connect Gmail account**, sign in to Google and grant read-only access.
 6. Back in the app, choose a screening profile, optionally filter by date range,

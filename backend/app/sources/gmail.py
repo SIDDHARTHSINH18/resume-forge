@@ -43,7 +43,7 @@ GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 API_BASE = "https://gmail.googleapis.com/gmail/v1"
-DEFAULT_REDIRECT_URI = "http://127.0.0.1:8100/api/sources/gmail/oauth/callback"
+DEFAULT_REDIRECT_URI = "http://127.0.0.1:8421/api/sources/gmail/oauth/callback"
 
 STATE_TTL_SECONDS = 600
 MAX_MESSAGES = 500

@@ -72,7 +72,7 @@ export function Layout() {
             <Icon name="funnel" size={16} />
           </span>
           <span className="brand-text">
-            <span className="brand-name">Shortlist</span>
+            <span className="brand-name">Resume-Forge</span>
             <br />
             <span className="brand-sub">AI SCREENING CONSOLE</span>
           </span>

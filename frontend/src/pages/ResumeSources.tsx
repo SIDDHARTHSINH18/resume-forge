@@ -33,7 +33,7 @@ import type {
   SourceSyncRow,
 } from "../types";
 
-const GMAIL_REDIRECT_HINT = "http://127.0.0.1:8100/api/sources/gmail/oauth/callback";
+const GMAIL_REDIRECT_HINT = "http://127.0.0.1:8421/api/sources/gmail/oauth/callback";
 
 export function ResumeSourcesPage() {
   const [cards, setCards] = useState<ResumeSourceCard[] | null>(null);
