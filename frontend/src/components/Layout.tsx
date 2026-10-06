@@ -5,13 +5,13 @@ import { api } from "../api";
 import { Icon, type IconName } from "./Icon";
 
 const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
-  { to: "/", label: "Dashboard", icon: "dashboard", end: true },
-  { to: "/profiles", label: "Screening Profiles", icon: "profiles" },
+  { to: "/", label: "Overview", icon: "dashboard", end: true },
+  { to: "/profiles", label: "Jobs", icon: "profiles" },
   { to: "/candidates", label: "Candidates", icon: "candidates" },
-  { to: "/sources", label: "Resume Sources", icon: "download" },
+  { to: "/sources", label: "Sources", icon: "download" },
   { to: "/processing", label: "Processing", icon: "processing" },
-  { to: "/reviews", label: "Reviews", icon: "reviews" },
-  { to: "/exports", label: "Exports", icon: "exports" },
+  { to: "/reviews", label: "Review Queue", icon: "reviews" },
+  { to: "/exports", label: "Reports", icon: "exports" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
 
@@ -72,9 +72,9 @@ export function Layout() {
             <Icon name="funnel" size={16} />
           </span>
           <span className="brand-text">
-            <span className="brand-name">Shortlist</span>
+            <span className="brand-name">ResumeForge</span>
             <br />
-            <span className="brand-sub">AI SCREENING CONSOLE</span>
+            <span className="brand-sub">HIRING INTELLIGENCE</span>
           </span>
         </div>
         <nav className="nav" aria-label="Main navigation">
@@ -106,7 +106,9 @@ export function Layout() {
         </div>
       </aside>
       <main className="main" id="main-content" tabIndex={-1}>
-        <Outlet />
+        <div className="workspace-frame">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
