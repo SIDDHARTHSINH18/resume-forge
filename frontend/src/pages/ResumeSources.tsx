@@ -458,7 +458,8 @@ function FetchPanel({
     [keywords],
   );
 
-  const missingPrivacyRange = !dateFrom || !dateTo;
+  const requiresPrivacyRange = card.kind === "gmail";
+  const missingPrivacyRange = requiresPrivacyRange && (!dateFrom || !dateTo);
   const invalidRange = Boolean(dateFrom && dateTo && dateTo < dateFrom);
   const tooManyKeywords = parsedKeywords.length > 8;
 
@@ -524,15 +525,17 @@ function FetchPanel({
     <div className="mt-3">
       <IntakeFlow done={flow.done} current={flow.current} busy={busy} />
       {flowNote && <p className="flow-note">{flowNote}</p>}
-      <div className="privacy-scan-panel mt-3">
-        <div className="privacy-scan-copy">
-          <div className="section-title">Mailbox access window</div>
-          <p className="field-hint">
-            Privacy first: ResumeForge only searches the dates you choose. Connecting Gmail never
-            starts a background scan, and nothing is imported until you review the preview.
-          </p>
+      {requiresPrivacyRange && (
+        <div className="privacy-scan-panel mt-3">
+          <div className="privacy-scan-copy">
+            <div className="section-title">Mailbox access window</div>
+            <p className="field-hint">
+              Privacy first: ResumeForge only searches the dates you choose. Connecting Gmail never
+              starts a background scan, and nothing is imported until you review the preview.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
       <div className="section-title mt-3">Preview criteria</div>
       <div className="field-row field-row-3">
         <div className="field">
@@ -604,21 +607,21 @@ function FetchPanel({
           />
         </div>
       </div>
-      {missingPrivacyRange && <p className="field-hint">Choose both dates to define exactly which part of the mailbox may be searched.</p>}
+      {requiresPrivacyRange && missingPrivacyRange && <p className="field-hint">Choose both dates to define exactly which part of the mailbox may be searched.</p>}
       {invalidRange && <p className="field-hint" style={{ color: "var(--danger)" }}>The end date must be on or after the start date.</p>}
       {tooManyKeywords && <p className="field-hint" style={{ color: "var(--danger)" }}>At most 8 keywords are supported.</p>}
 
       <div className="row wrap" style={{ justifyContent: "flex-end", gap: 8 }}>
-        {card.last_successful_sync_at && (
+        {card.last_successful_sync_at && !requiresPrivacyRange && (
           <button
             type="button"
             className="btn btn-ghost"
             onClick={() => void runPreview("sync")}
-            disabled={true}
-            title={`Disabled for privacy: use an explicit From/To date range instead of fetching since the last sync (${formatRelative(card.last_successful_sync_at)})`}
+            disabled={busy !== null}
+            title={`Fetch new items since the last successful sync (${formatRelative(card.last_successful_sync_at)})`}
           >
             {busy === "sync" ? <span className="spinner" /> : <Icon name="clock" size={14} />}
-            Use a date range
+            Fetch new since last sync
           </button>
         )}
         <button
@@ -628,7 +631,7 @@ function FetchPanel({
           disabled={busy !== null || !profileId || missingPrivacyRange || invalidRange || tooManyKeywords}
         >
           {busy === "preview" ? <span className="spinner" /> : <Icon name="search" size={14} />}
-          {busy === "preview" ? "Fetching…" : "Preview fetch"}
+          {busy === "preview" ? "Fetching…" : requiresPrivacyRange ? "Preview selected period" : "Preview fetch"}
         </button>
       </div>
 
