@@ -1602,3 +1602,96 @@ tr.clickable:hover .row-chevron { color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Premium workspace shell -------------------------------------------------
+   A floating, continuous-corner frame keeps the product quiet and tactile. */
+body {
+  background:
+    radial-gradient(circle at 50% -20%, rgba(0, 113, 227, .055), transparent 36rem),
+    var(--bg);
+}
+.app-shell {
+  gap: 14px;
+  padding: 14px;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+}
+.sidebar {
+  top: 14px;
+  height: calc(100vh - 28px);
+  border: 1px solid rgba(0, 0, 0, .06);
+  border-radius: 24px;
+  padding: 16px 12px 14px;
+  background: rgba(255, 255, 255, .78);
+  backdrop-filter: saturate(180%) blur(24px);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, .055);
+}
+.brand { padding: 5px 10px 20px; }
+.brand-mark {
+  border-radius: 10px;
+  background: var(--text);
+  border-color: var(--text);
+  color: white;
+  box-shadow: 0 3px 10px rgba(0,0,0,.12);
+}
+.brand-name { font-size: 16px; letter-spacing: -.025em; }
+.brand-sub { letter-spacing: .09em; }
+.nav { gap: 4px; }
+.nav-link {
+  min-height: 38px;
+  border-radius: 11px;
+  padding: 8px 11px;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+.nav-link:hover { background: rgba(0,0,0,.035); transform: translateX(1px); }
+.nav-link.active {
+  background: #fff;
+  border-color: rgba(0,0,0,.055);
+  box-shadow: 0 2px 8px rgba(0,0,0,.045);
+}
+.nav-link.active::before { display: none; }
+.sidebar-foot { border-color: rgba(0,0,0,.06); }
+.main { min-height: calc(100vh - 28px); }
+.workspace-frame {
+  min-height: calc(100vh - 28px);
+  background: rgba(255,255,255,.58);
+  border: 1px solid rgba(0,0,0,.055);
+  border-radius: 28px;
+  overflow: clip;
+  box-shadow: 0 12px 40px rgba(0,0,0,.045);
+}
+.topbar {
+  margin: 12px 12px 0;
+  top: 12px;
+  border: 1px solid rgba(0,0,0,.055);
+  border-radius: 18px;
+  padding: 14px 18px;
+  background: rgba(255,255,255,.76);
+  box-shadow: 0 5px 20px rgba(0,0,0,.04);
+}
+.topbar h1 { font-size: 19px; letter-spacing: -.025em; }
+.page { padding: 22px 24px 48px; }
+.card {
+  border-color: rgba(0,0,0,.065);
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.025), 0 8px 28px rgba(0,0,0,.025);
+}
+.card-header { padding: 14px 18px; border-color: rgba(0,0,0,.055); }
+.card-body { padding: 18px; }
+.stat {
+  border-color: rgba(0,0,0,.06);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.02);
+}
+.btn { border-radius: 10px; min-height: 36px; }
+.btn-primary { box-shadow: 0 2px 7px rgba(0,113,227,.18); }
+.input, .select, .textarea, .chips-box { border-radius: 10px; background: rgba(255,255,255,.88); }
+.table tbody tr { transition: background .16s ease; }
+.table tbody tr:hover { background: rgba(0,113,227,.035); }
+
+@media (max-width: 820px) {
+  .app-shell { padding: 8px; gap: 8px; }
+  .sidebar { top: 8px; height: calc(100vh - 16px); border-radius: 20px; }
+  .workspace-frame { min-height: calc(100vh - 16px); border-radius: 22px; }
+  .topbar { margin: 8px 8px 0; top: 8px; border-radius: 16px; }
+}
