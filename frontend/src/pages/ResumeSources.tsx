@@ -530,7 +530,7 @@ function FetchPanel({
           <div className="privacy-scan-copy">
             <div className="section-title">Mailbox access window</div>
             <p className="field-hint">
-              Privacy first: ResumeForge only searches the dates you choose. Connecting Gmail never
+              Privacy first: MeritOS only searches the dates you choose. Connecting Gmail never
               starts a background scan, and nothing is imported until you review the preview.
             </p>
           </div>
