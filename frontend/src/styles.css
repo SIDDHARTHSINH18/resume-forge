@@ -4,40 +4,40 @@
 
 :root {
   /* surfaces (depth order: bg → bg-soft → panel → panel-2 → panel-3) */
-  --bg: #0a0d12;
-  --bg-soft: #0d1117;
-  --panel: #12171f;
-  --panel-2: #171d26;
-  --panel-3: #1f2733;
+  --bg: #f5f5f7;
+  --bg-soft: #fbfbfd;
+  --panel: #ffffff;
+  --panel-2: #f5f5f7;
+  --panel-3: #e8e8ed;
 
   /* lines */
-  --border: #232b37;
-  --border-strong: #2f3947;
-  --border-hover: #3a4658;
+  --border: #e5e5ea;
+  --border-strong: #d2d2d7;
+  --border-hover: #a1a1a6;
 
   /* text (secondary values verified ≥ 4.5:1 on panel surfaces) */
-  --text: #e9edf4;
-  --text-2: #a6afc0;
-  --text-3: #7f8a9b;
+  --text: #1d1d1f;
+  --text-2: #515154;
+  --text-3: #6e6e73;
 
   /* accent — "signal teal" (links, primary actions, selection, focus) */
-  --accent: #33b1c1;
-  --accent-hover: #4cc2d1;
-  --accent-press: #2a9aa9;
-  --accent-soft: rgba(51, 177, 193, 0.13);
-  --accent-border: rgba(51, 177, 193, 0.42);
-  --accent-ink: #06181c; /* text on accent fills */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-press: #0068d1;
+  --accent-soft: rgba(0, 113, 227, 0.09);
+  --accent-border: rgba(0, 113, 227, 0.24);
+  --accent-ink: #ffffff; /* text on accent fills */
 
   /* semantic — kept distinct from the accent hue */
-  --success: #46c98f;
-  --success-soft: rgba(70, 201, 143, 0.12);
-  --success-border: rgba(70, 201, 143, 0.3);
-  --warn: #d9a441;
-  --warn-soft: rgba(217, 164, 65, 0.13);
-  --warn-border: rgba(217, 164, 65, 0.32);
-  --danger: #e06a6a;
-  --danger-soft: rgba(224, 106, 106, 0.12);
-  --danger-border: rgba(224, 106, 106, 0.32);
+  --success: #248a3d;
+  --success-soft: rgba(36, 138, 61, 0.09);
+  --success-border: rgba(36, 138, 61, 0.22);
+  --warn: #a05a00;
+  --warn-soft: rgba(160, 90, 0, 0.08);
+  --warn-border: rgba(160, 90, 0, 0.22);
+  --danger: #d70015;
+  --danger-soft: rgba(215, 0, 21, 0.07);
+  --danger-border: rgba(215, 0, 21, 0.20);
 
   /* radii — 4 steps */
   --radius-xs: 6px; /* badges, chips */
@@ -70,8 +70,8 @@
   --sp-6: 24px;
   --sp-8: 32px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.12);
   --sidebar-w: 232px;
 }
 
@@ -314,8 +314,8 @@ a:hover { text-decoration: underline; }
   align-items: center;
   gap: 14px;
   padding: 14px 28px;
-  background: rgba(10, 13, 18, 0.86);
-  backdrop-filter: blur(8px);
+  background: rgba(251, 251, 253, 0.82);
+  backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--border);
 }
 
@@ -357,7 +357,7 @@ a:hover { text-decoration: underline; }
   font-weight: var(--fw-medium);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
   user-select: none;
 }
 
@@ -584,6 +584,7 @@ label.field-label {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .card-header {
@@ -1575,4 +1576,29 @@ tr.clickable:hover .row-chevron { color: var(--text-2); }
 
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
+}
+
+
+/* Client-ready refinement: restrained, privacy-forward interaction layer. */
+.privacy-scan-panel {
+  padding: 16px 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+}
+.privacy-scan-copy .section-title {
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.privacy-scan-copy .field-hint {
+  color: var(--text-2);
+  max-width: 760px;
+  line-height: 1.55;
+}
+.btn:not(:disabled):active { transform: scale(0.985); }
+.card, .stat, .nav-link, .input, .select, .textarea {
+  transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
