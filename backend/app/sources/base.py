@@ -58,6 +58,11 @@ class SearchCriteria:
         end = _parse_date(self.date_to, "End date")
         if start and end and end < start:
             raise SourceError("End date must be on or after start date.")
+        # Privacy boundary: connected mailbox sources are never allowed to
+        # silently widen a scan to the entire account. Callers must choose
+        # both ends of the window explicitly.
+        if bool(start) != bool(end):
+            raise SourceError("Choose both a start date and an end date.")
         if self.date_from and not start:
             raise SourceError("Start date must be a valid date (YYYY-MM-DD).")
         if self.date_to and not end:
