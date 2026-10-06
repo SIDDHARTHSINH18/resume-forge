@@ -500,6 +500,9 @@ class GmailSource(ResumeSource):
         clear_tokens(ctx)
 
     def search(self, ctx, criteria: SearchCriteria) -> ScanResult:
+        criteria.validate()
+        if not criteria.date_from or not criteria.date_to:
+            raise SourceError("Choose both a start date and an end date before searching Gmail.")
         api = self._api(ctx)
         query = build_gmail_query(criteria)
         message_ids = api.list_message_ids(query)
