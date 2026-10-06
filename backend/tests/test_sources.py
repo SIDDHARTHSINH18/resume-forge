@@ -218,6 +218,12 @@ def test_only_stateful_sources_persist_rows(env):
 # --------------------------------------------------------------------------
 
 
+def test_gmail_search_requires_explicit_privacy_window(env):
+    source = GmailSource()
+    with pytest.raises(SourceError, match="Choose both a start date and an end date"):
+        source.search(env.ctx, SearchCriteria())
+
+
 def test_gmail_query_range_is_inclusive_of_end_date():
     query = build_gmail_query(SearchCriteria(date_from="2026-09-01", date_to="2026-09-30"))
     assert query == "after:2026/09/01 before:2026/10/01"
