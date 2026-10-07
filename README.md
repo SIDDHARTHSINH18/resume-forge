@@ -1,314 +1,273 @@
-# Resume-Forge
+# ResumeForge
 
-**Evidence-First Candidate Screening**
+<details>
+<summary><strong>⚡ Quick navigation</strong></summary>
 
-**Repository:** [github.com/SIDDHARTHSINH18/Resume-Forge-](https://github.com/SIDDHARTHSINH18/Resume-Forge-)
+**Explore:** [What it is](#what-it-is) · [Architecture](#architecture) · [Capabilities](#current-capabilities) · [Engineering evidence](#engineering-evidence) · [Security](#security-boundary) · [Run locally](#development)
 
-Resume-Forge is a local-first AI-assisted candidate screening platform that processes
-resumes, extracts structured candidate information, evaluates candidates against
-configurable criteria, provides evidence-backed screening results, and keeps the
-final decision with a human reviewer.
+</details>
 
-> **AI recommendations are advisory.**
-> **Human decisions are authoritative.**
+**Evidence-first candidate screening with human-controlled decisions.**
 
-Resume-Forge is *not* an autonomous hiring or rejection system. It never advances,
-rejects or closes a candidate on its own — it produces screening evidence, a
-deterministic score, an optional AI-assisted analysis and a recommendation label.
-A human reviewer makes every decision, and every action is recorded in an audit
-trail.
+ResumeForge is a local-first screening platform for recruitment and college admissions. It turns resumes into structured evidence, applies a deterministic screening model, optionally adds AI analysis, and leaves the final decision to a human reviewer.
 
-## Main capabilities
+The design goal is simple:
 
-- PDF / DOCX / TXT resume ingestion through one canonical pipeline
-- Deterministic, explainable candidate scoring (six weighted components)
-- Configurable recruitment *and* college screening profiles — nothing hardcoded
-- Candidate search, filtering and sorting
-- Candidate detail view with requirement-by-requirement evidence
-- Missing-requirement detection (shown, never guessed)
-- Optional AI-assisted analysis (clearly labelled, advisory only)
-- Explicit human decisions (Move to Interview / Shortlist / Hold / Close) with reasons
-- Human notes attached to candidates
-- Full audit trail for every action
-- CSV export (recorded in the audit log)
-- Batch processing with live progress
-- Failed-job retry with honest failure reasons
-- Duplicate detection (flagged, never silently deleted)
-- Resume Sources: automated intake with preview → explicit import
-- Gmail connector architecture (official OAuth/API, read-only)
-- Mock source for deterministic end-to-end testing
-- Honest LinkedIn "Unavailable" state (no scraping, no inventing data)
-- Responsive interface (320 → desktop verified)
-- Accessibility features (acceptance-tested subset — see below)
-- Local-first operation: SQLite + local files, no cloud dependency
+> **Make screening easier to inspect, not easier to automate blindly.**
 
-## How screening works
+## What it does
 
-1. **Ingest** — resumes arrive from manual upload, the mock source, or a connected
-   Gmail account. Every file enters the *same* pipeline; there is no per-source
-   shortcut.
-2. **Parse & extract** — text is extracted and structured (education, skills,
-   experience, projects, certifications, contact).
-3. **Score deterministically** — six weighted components produce a transparent
-   score. Missing information shows as "Not found" and scores zero; it is never
-   guessed.
-4. **Analyse (optional)** — if an AI provider is configured, an advisory analysis
-   is added, labelled with provider, model and confidence. The app works fully
-   without any provider.
-5. **Review** — a human reviews the evidence and makes the final decision.
+- Ingests PDF, DOCX, and TXT resumes through one canonical pipeline
+- Extracts structured candidate information without guessing missing data
+- Scores candidates with six deterministic, configurable components
+- Supports recruitment and college screening profiles
+- Shows requirement-level evidence and missing requirements
+- Adds optional AI analysis without making the AI the decision-maker
+- Supports human decisions: Interview, Shortlist, Hold, Close
+- Records notes and actions in an audit trail
+- Detects potential duplicates without silently deleting candidates
+- Processes batches with live progress and honest failure states
+- Retries failed processing jobs
+- Exports candidate data to CSV
+- Supports resume-source ingestion with **preview → review → explicit import**
+- Includes Gmail connector architecture using the official OAuth/API path
+- Keeps LinkedIn unavailable rather than scraping or inventing data
+- Runs locally with SQLite and local files
 
-## Resume source model
+## Architecture
+
+The important boundary is the ingestion pipeline. Different sources do not get different screening logic.
 
 ```
-Source
-   ↓
-Preview
-   ↓
-Review
-   ↓
-Explicit Import
-   ↓
-Processing
-   ↓
-Results
+Manual upload ─┐
+Gmail ─────────┤
+Mock source ───┤
+               ↓
+        Source / Preview
+               ↓
+        Explicit Import
+               ↓
+        Canonical Pipeline
+               ↓
+        Parse → Extract
+               ↓
+        Deterministic Score
+               ↓
+        Duplicate Detection
+               ↓
+        Candidate + Evidence
+               ↓
+       Optional AI Analysis
+               ↓
+          Human Review
+               ↓
+          Human Decision
 ```
 
-A preview only scans and classifies — nothing is downloaded or imported at that
-step. Import is always an explicit button press, and imported files run through the
-same pipeline as manual uploads (parsing, extraction, scoring, duplicate detection
-and candidate creation are never bypassed).
-
-- **Gmail** uses the official Gmail API with OAuth 2.0 and read-only access. No
-  Google password is ever requested or stored, and no browser scraping is used.
-  Gmail is **not** automatically connected — it requires your own Google Cloud
-  OAuth client to be configured (see below).
-- **LinkedIn** web scraping is **not implemented** and never will be. LinkedIn
-  currently reports an honest "Unavailable" state: nothing is fetched and no data
-  is invented.
-- **Mock source** exists for deterministic testing (labelled `MOCK SOURCE`). It is a
-  local fixture inbox — never a real mailbox and never presented as Gmail.
-- **Manual upload** remains fully supported and is the canonical path every
-  connector feeds into.
-
-Mock data is testing infrastructure, not a production integration.
-
-## AI safety and the human decision
-
-Resume-Forge deliberately separates:
+The system recommendation and the human decision are separate records.
 
 ```
-System recommendation
-        ≠
+Recommendation
+     ≠
 Human decision
 ```
 
-The platform provides screening evidence and a deterministic score, plus optional
-AI-assisted analysis and a recommendation label. It does **not** make autonomous
-hiring decisions. The human reviewer makes the final call, and the interface states
-this wherever a recommendation appears.
+That separation is intentional. ResumeForge is not an autonomous hiring or rejection system.
 
-## Privacy
+## Scoring model
 
-Resume files contain personal information. This repository must never contain:
+The default screening score is composed of six transparent components:
 
-- real resumes or real candidate data
+| Component | Weight |
+| --- | ---: |
+| Academic | 25% |
+| Required skills | 30% |
+| Relevant experience | 20% |
+| Projects | 15% |
+| Certifications | 5% |
+| Completeness | 5% |
+
+Profiles can configure their own screening criteria and thresholds.
+
+Missing information is reported as **Not found** rather than inferred.
+
+## AI boundary
+
+AI is optional.
+
+Without an AI provider, the deterministic screening pipeline still works.
+
+When enabled, AI is used for analysis and explanation. It does not control ingestion, override deterministic evidence, or make the final candidate decision.
+
+The repository supports provider-agnostic integration for:
+
+- None / deterministic-only
+- OpenAI-compatible endpoints
+- Groq
+- Google Gemini
+- Local endpoints
+- Mock provider for deterministic tests
+
+The mock provider is test infrastructure, not a claim of model performance.
+
+## Resume sources
+
+```
+SOURCE
+  ↓
+PREVIEW
+  ↓
+REVIEW
+  ↓
+IMPORT
+  ↓
+PROCESSING
+  ↓
+RESULTS
+```
+
+Preview does not silently import resumes.
+
+Gmail uses the official Gmail API with OAuth 2.0 and read-only access. LinkedIn web scraping is deliberately not implemented.
+
+Only PDF, DOCX, and TXT attachments enter the resume pipeline. Unsupported attachments are ignored and never executed.
+
+## Security and privacy
+
+Resumes contain personal information, so runtime data stays outside the repository.
+
+The repository must not contain:
+
+- real resumes
+- real candidate records
 - real Gmail messages
-- OAuth tokens, API keys, passwords or production credentials
+- OAuth tokens
+- API keys
+- passwords
+- production credentials
 
-Only synthetic/demo data may be included where explicitly marked as testing/demo
-data. The bundled demo generator creates synthetic, clearly-labelled fixtures at
-runtime; they are git-ignored and never mixed with real applicants. Runtime state
-(SQLite database, uploaded files, local configuration) is git-ignored as well.
+Local runtime state, uploads, databases, configuration, and generated demo data are git-ignored.
 
-## Tech stack
+Gmail OAuth credentials are currently stored in local configuration rather than an OS keychain. That is a documented limitation, not hidden behind the README.
 
-- **Backend:** Python 3.12+ (FastAPI, SQLite with WAL)
-- **Frontend:** React 19 + TypeScript + Vite
-- **Storage:** local SQLite + local files — nothing leaves your machine
+## Engineering choices
 
-## Requirements
+A few decisions are deliberately conservative:
 
-- Windows (scripts provided) — Python 3.12+ and Node.js 20+ installed
+- **Deterministic logic before AI** when a rule can be expressed in code.
+- **One ingestion path** instead of source-specific screening behavior.
+- **Human authority** over recommendation output.
+- **Explicit uncertainty** instead of fabricated completeness.
+- **Idempotent imports** so rescanning does not duplicate candidates.
+- **Auditability** for important actions.
+- **Failure visibility** instead of pretending a failed job completed.
 
-## Setup
+## Stack
+
+- Python 3.12+
+- FastAPI
+- SQLite / WAL
+- pypdf
+- python-docx
+- React 19
+- TypeScript
+- Vite
+- Vitest
+
+## Run locally
+
+### Backend
 
 ```bat
 cd backend
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-
-cd ..\frontend
-npm install
+.venv\\Scripts\\python.exe -m pip install -r requirements.txt
+.venv\\Scripts\\python.exe -m pytest
 ```
 
-## Run
-
-Option A — production build served by the backend (single URL):
+### Frontend
 
 ```bat
 cd frontend
+npm ci
+npm test
 npm run build
-
-cd ..\scripts
-run_backend.bat
 ```
 
-Open http://127.0.0.1:8421
+### Application
 
-Option B — development (hot reload):
+For the production-style local run:
 
 ```bat
-scripts\run_backend.bat    rem API on http://127.0.0.1:8421
-scripts\run_frontend.bat   rem UI on http://127.0.0.1:5421 (proxies /api)
+frontend\\npm run build
+scripts\\run_backend.bat
 ```
 
-## DEMO (fixed ports — coexists with ENMA and QResolve)
+Then open:
 
-Resume-Forge owns exactly two ports and never touches ENMA (8000/5175/5177/8977)
-or QResolve (8321/5321):
-
-- Backend API: **127.0.0.1:8421** (source of truth: `scripts/run_backend.*`, override with `BACKEND_PORT`)
-- Frontend dev: **127.0.0.1:5421** (source of truth: `frontend/vite.config.ts`, override with `FRONTEND_PORT`; `strictPort` is on, so Vite fails loudly instead of hopping ports)
-
-Terminal 1 — backend:
-
-```bat
-scripts\run_backend.bat
+```
+http://127.0.0.1:8100
 ```
 
-Terminal 2 — frontend:
+## Verification
 
-```bat
-scripts\run_frontend.bat
-```
-
-Open **http://127.0.0.1:5421** (the dev server proxies `/api` to 8421). In
-production (`npm run build` + `run_backend.bat`) the backend serves the built
-UI same-origin on 8421.
-
-### 5-minute demo script
-
-1. Open http://127.0.0.1:5421 → **Screening Profiles** → **New profile**, pick
-   Recruitment, add a few required skills, save. (If a profile already exists,
-   open it instead.)
-2. On the profile page, click **Import demo resumes** — generates ~14 labelled
-   synthetic resumes (including one deliberately broken PDF) and ingests them
-   through the normal upload pipeline.
-3. **Processing** page — watch live batch progress; note the failed-file row for
-   the broken PDF with its reason.
-4. **Candidates** — filter/search, open one candidate to show per-requirement
-   match marks and the scoring breakdown; add a note and record a decision
-   (e.g. Move to Interview). Optionally show **Reviews** queue.
-5. **Exports** → **Export CSV** — download the shortlist and open it.
-
-### Known limitations
-
-- AI provider features (Settings → AI provider) require an API key or a local
-  endpoint; with none configured, scoring is deterministic-only and AI
-  summaries are unavailable. Use "Mock" for a safe demo of the AI surface.
-- Gmail intake needs a configured Google OAuth client — skip it live; use demo
-  resumes instead.
-- The demo dataset includes one intentionally corrupt PDF to demonstrate error
-  handling; its failure row on Processing is expected, not a bug.
-- Single-user local app: no auth, SQLite storage in `backend/data`.
-
-## First steps
-
-1. **Create a screening profile** — Screening Profiles → New profile. Choose the
-   type (Recruitment or College), then configure required/preferred skills, weights,
-   thresholds and the minimum academic requirement.
-2. **Load resumes** — open the profile → Upload resumes, or use **Resume Sources**
-   for automated intake (see above). PDF, DOCX and TXT are supported. Each file is
-   parsed, deduplicated by content fingerprint and email, then scored on six
-   weighted components. For evaluation, "Import demo resumes" generates ~14 clearly
-   labelled synthetic files (including one deliberately broken PDF) and ingests them
-   through the same pipeline — testing only.
-3. **Process** — the Processing page shows live batch progress, failed files with
-   reasons, and a Retry button per failed file.
-4. **Review** — Candidates lists every parsed candidate with real filtering, search
-   and sorting. Open a candidate for requirement-by-requirement match marks and
-   scoring transparency (points / max per component), add notes, and record a
-   decision (Move to Interview / Shortlist / Hold / Close). The Reviews page shows
-   the queue of candidates still awaiting a human decision.
-5. **Export** — Exports → Export CSV produces `Name, Email, Education, Academic
-   score, Skill match, Experience, Overall match, Recommendation, Human decision,
-   Status, Screening profile, Candidate ID`. Every export is recorded in the audit
-   log.
-
-## AI provider (optional)
-
-Settings → AI provider. Options: None (deterministic only), OpenAI-compatible,
-Groq, Google Gemini, Local endpoint, and Mock (testing only — returns deterministic
-placeholder output, never a real score). API keys are stored locally and never
-written to the audit log or exports.
-
-## Connecting Gmail (optional, requires your own Google Cloud project)
-
-1. In Google Cloud Console create a project and enable the **Gmail API**.
-2. Configure the OAuth consent screen (External, testing is fine) and add your own
-   Google account as a test user.
-3. Create an OAuth client of type **Web application** and add this authorised
-   redirect URI: `http://127.0.0.1:8421/api/sources/gmail/oauth/callback`
-4. Paste the client ID and secret into Resume Sources → Gmail → Save OAuth client.
-5. Click **Connect Gmail account**, sign in to Google and grant read-only access.
-6. Back in the app, choose a screening profile, optionally filter by date range,
-   sender or subject keywords, then Preview → Import.
-
-Fetches are read-only and idempotent: re-scanning the same inbox never re-imports a
-file. Attachment rules: only `.pdf`, `.docx` and `.txt` enter the pipeline;
-everything else (`.zip`, `.exe`, `.bat`, …) is marked `IGNORED_UNSUPPORTED_TYPE` and
-never executed or opened.
-
-### Credential storage — known limitation
-
-OAuth client secrets and Gmail access/refresh tokens are kept in
-`backend/data/config.json`, a local plaintext JSON file (same store as the optional
-AI provider keys), and are never written to SQLite or the audit log. This machine's
-file permissions are the only protection; there is no OS keychain integration. If
-that is not acceptable for you, do not connect Gmail — the rest of the app is fully
-functional without it. Environment variables (`AILISTER_GMAIL_CLIENT_ID`,
-`AILISTER_GMAIL_CLIENT_SECRET`, `AILISTER_GMAIL_REDIRECT_URI`) can override the
-stored client for managed setups.
-
-## Testing and verified status
-
-```bat
-cd backend
-.venv\Scripts\python.exe -m pytest        rem 119 tests
-
-cd ..\frontend
-npm test                                  rem vitest, 23 tests
-npm run build                             rem tsc typecheck + production build
-```
-
-Latest M3 acceptance results (verified on the running application):
+The latest M3 acceptance run on the actual application reported:
 
 - Backend: **119 passed**
 - Frontend: **23 passed**
 - TypeScript: **passed**
 - Production build: **passed**
-- Responsive: **320 / 375 / 544 / 768 / 1024 / desktop verified**
-- M3 status: **READY TO FREEZE**
+- Responsive checks: **320 / 375 / 544 / 768 / 1024 / desktop**
+- Real browser workflow: profile creation, resume intake, screening, search/filter/sort, candidate review, human decisions, retry, CSV export, audit feed
+- Resume source workflow: preview, explicit import, repeated-scan idempotency, duplicate detection, unsupported-file handling
 
-Accessibility is an **acceptance-tested subset** (keyboard navigation, skip link,
-focus management, accessible names, contrast on sampled text, modal focus
-behaviour) — not a claim of full WCAG compliance.
+These are acceptance results for the current development state, not a claim of universal production readiness.
 
-## Known low-priority items
+## Known limitations
 
-Documented during M3 acceptance; classified **LOW** and non-blocking:
+- Live Gmail OAuth has not been verified against a real external mailbox in the acceptance run.
+- Gmail credentials/tokens are stored in local plaintext configuration rather than an OS keychain.
+- Accessibility verification is an acceptance-tested subset, not a full WCAG compliance claim.
+- Two low-priority UI/serving issues remain documented in the M3 acceptance notes.
 
-- **LOW-001** — Candidate detail AI card contains wording referring to
-  deterministic scores as being "below" the AI card even though the layout places
-  the scoring elsewhere.
-- **LOW-002** — Static serving does not currently specify explicit Cache-Control
-  behavior for index.html/assets.
+## Project structure
 
-## Data location
+```
+backend/
+frontend/
+scripts/
+tests/
+```
 
-- SQLite database, uploaded files and config: `backend/data/` (git-ignored)
-- Demo resume files: `backend/demo_data/` (git-ignored, regenerated at runtime)
+See [docs/architecture.md](docs/architecture.md) for the system boundaries and data flow.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT
+
+
+<details>
+<summary><strong>👀 Reading this repository</strong></summary>
+
+If you have only one minute, read the opening principle, then inspect the architecture and verification/testing sections. The project is intentionally documented around **what the system can demonstrate**, not what it is intended to become.
+
+</details>
+
+<details>
+<summary><strong>🔎 Interactive screening map</strong></summary>
+
+```mermaid
+flowchart LR
+    S[Source] --> P[Preview]
+    P --> I[Explicit import]
+    I --> X[Canonical pipeline]
+    X --> E[Evidence]
+    E --> R[Recommendation]
+    R --> H[Human review]
+    H --> D[Human decision]
+    AI[Optional AI] -. advisory .-> H
+```
+
+**Recommendation and human decision remain separate.**
+
+</details>
