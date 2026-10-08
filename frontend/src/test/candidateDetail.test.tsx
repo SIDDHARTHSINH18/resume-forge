@@ -2,12 +2,13 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { candidateDetailFixture, installFetchMock, res, settingsFixture } from "./mockApi";
+import { candidateDetailFixture, candidateEmailsFixture, installFetchMock, res, settingsFixture } from "./mockApi";
 import { renderApp } from "./renderApp";
 
 function installDetailMock(detail = candidateDetailFixture()) {
   return installFetchMock((url, init) => {
     if (url === "/api/settings") return res(200, settingsFixture());
+    if (url === "/api/candidates/11/emails") return res(200, candidateEmailsFixture());
     if (url === "/api/candidates/11/decision") return res(200, detail);
     if (url === "/api/candidates/11/notes") return res(200, detail);
     if (url === "/api/candidates/11") return res(200, detail);
@@ -86,6 +87,7 @@ describe("candidate detail", () => {
     let saved = false;
     installFetchMock((url, init) => {
       if (url === "/api/settings") return res(200, settingsFixture());
+      if (url === "/api/candidates/11/emails") return res(200, candidateEmailsFixture());
       if (url === "/api/candidates/11/notes") {
         saved = true;
         return res(200, updated);

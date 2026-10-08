@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import { CommunicationCard } from "../components/CommunicationCard";
 import { PageHeader } from "../components/Layout";
 import {
   Card,
@@ -23,7 +24,13 @@ import {
   resumeStatusLabel,
   strengthLabel,
 } from "../format";
-import type { CandidateDetail, SkillGrade, Thresholds } from "../types";
+import type {
+  CandidateDetail,
+  CandidateExplanation,
+  DecisionMemoryRow,
+  SkillGrade,
+  Thresholds,
+} from "../types";
 
 const COMPONENT_LABELS: Record<string, string> = {
   academic: "Academic",
@@ -36,6 +43,172 @@ const COMPONENT_LABELS: Record<string, string> = {
 
 function decisionText(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ");
+}
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+};
+
+function confidenceBadgeClass(confidence: string): string {
+  if (confidence === "high") return "badge badge-success";
+  if (confidence === "medium") return "badge badge-outline";
+  return "badge badge-neutral";
+}
+
+function ExplanationCard({ explanation }: { explanation: CandidateExplanation }) {
+  const pattern = explanation.hr_pattern;
+  const hasSkillEvidence =
+    explanation.matched_required.length > 0 ||
+    explanation.missing_required.length > 0 ||
+    explanation.weak_required.length > 0;
+
+  return (
+    <Card
+      kicker="Advisory recommendation"
+      title="Why MeritOS recommends this candidate"
+      className="mt-3"
+      actions={<span className={confidenceBadgeClass(explanation.confidence)}>{CONFIDENCE_LABELS[explanation.confidence] ?? explanation.confidence}</span>}
+    >
+      <p className="explain-headline">{explanation.headline}</p>
+
+      {explanation.guardrail.capped && (
+        <Notice kind="warn" icon="alert">
+          <strong>Requirement gate:</strong> {explanation.guardrail.detail || "A required skill or requirement for this role was not demonstrated, so the recommendation is capped at manual review."}
+        </Notice>
+      )}
+
+      {explanation.matched_required.length > 0 && (
+        <>
+          <div className="section-title mt-3">Required skills evidenced</div>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {explanation.matched_required.map((item) => (
+              <span className="badge badge-success" key={item.skill} title={item.detail ?? ""}>
+                <Icon name="check" size={12} />
+                {item.skill}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      {explanation.missing_required.length > 0 && (
+        <>
+          <div className="section-title mt-3">Required skills not demonstrated</div>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {explanation.missing_required.map((skill) => (
+              <span className="badge badge-danger" key={skill} title="Not evidenced in the resume — this is not proof the candidate lacks it">
+                <Icon name="x" size={12} />
+                {skill}
+              </span>
+            ))}
+          </div>
+          <p className="field-hint mt-1">
+            "Not demonstrated" means no evidence was found in this resume — it is never treated as
+            proof that the candidate lacks the skill.
+          </p>
+        </>
+      )}
+
+      {explanation.weak_required.length > 0 && (
+        <p className="field-hint mt-2">
+          Required but only weakly evidenced: <strong>{explanation.weak_required.join(", ")}</strong> —
+          not strongly supported by experience or projects.
+        </p>
+      )}
+
+      {explanation.matched_preferred.length > 0 && (
+        <>
+          <div className="section-title mt-3">Preferred skills matched</div>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {explanation.matched_preferred.map((item) => (
+              <span className="chip" key={item.skill}>
+                {item.skill}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!hasSkillEvidence && (
+        <p className="faint small mt-2">
+          No required or preferred skill from this profile was found in the resume, so there is no
+          skill evidence to explain.
+        </p>
+      )}
+
+      {pattern && (
+        <Notice kind="accent" icon="profiles">
+          <strong>HR pattern (advisory):</strong> {pattern.text} Similarity {Math.round(pattern.similarity * 100)}%,
+          based on {pattern.based_on} prior decision{pattern.based_on === 1 ? "" : "s"}.
+        </Notice>
+      )}
+
+      {explanation.warnings.length > 0 && (
+        <ul className="plain-list mt-3 explain-warnings">
+          {explanation.warnings.map((warning, index) => (
+            <li key={index}>{warning}</li>
+          ))}
+        </ul>
+      )}
+
+      <p className="field-hint mt-3">
+        {explanation.advisory_only} HR patterns are consulted only after the stated job requirements:
+        a remembered preference can never outrank a required skill.
+      </p>
+    </Card>
+  );
+}
+
+function DecisionMemoryCard({ rows }: { rows: DecisionMemoryRow[] }) {
+  return (
+    <Card kicker="Decision memory" title="HR decision history" className="mt-3">
+      {rows.length === 0 ? (
+        <p className="faint small">
+          No decisions recorded yet for this candidate. Every future decision snapshot keeps its
+          evidence — matched and missing required skills, experience level and source — so insights
+          stay explainable.
+        </p>
+      ) : (
+        <div className="feed">
+          {rows.map((entry) => (
+            <div className="feed-item" key={entry.id}>
+              <span className="feed-icon">
+                <Icon name="check" size={12} />
+              </span>
+              <span className="grow">
+                <span className="feed-msg">
+                  <strong>{decisionText(entry.decision)}</strong>
+                  {entry.previous_decision && entry.previous_decision !== entry.decision && (
+                    <span className="faint"> (was {decisionText(entry.previous_decision)})</span>
+                  )}
+                </span>
+                <span className="feed-time" style={{ display: "block" }}>
+                  {entry.decided_by || "Reviewer"} · {formatDate(entry.decided_at)} · via {entry.source_kind}
+                </span>
+                {entry.reason && <span className="small muted" style={{ display: "block" }}>{entry.reason}</span>}
+                {(entry.matched_required.length > 0 || entry.missing_required.length > 0) && (
+                  <span className="row wrap mt-1" style={{ gap: 4 }}>
+                    {entry.matched_required.map((skill) => (
+                      <span className="badge badge-success" key={`m-${skill}`}>
+                        {skill}
+                      </span>
+                    ))}
+                    {entry.missing_required.map((skill) => (
+                      <span className="badge badge-danger" key={`x-${skill}`}>
+                        {skill} · not demonstrated
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 function clampScore(value: number): number {
@@ -955,12 +1128,15 @@ export function CandidateDetailPage() {
 
         <div className="grid-detail detail-grid mt-3">
           <div>
+            {candidate.explanation && <ExplanationCard explanation={candidate.explanation} />}
             <ScoreBreakdown candidate={candidate} />
             <SkillMatch candidate={candidate} />
             <ResumeData candidate={candidate} />
           </div>
           <div>
             <HumanReview candidate={candidate} onChanged={() => void load()} />
+            <CommunicationCard candidate={candidate} onChanged={() => void load()} />
+            <DecisionMemoryCard rows={candidate.decision_memory ?? []} />
             <AiPanel candidate={candidate} onChanged={() => void load()} />
             <ContactResume candidate={candidate} />
             <ActivityCard candidate={candidate} />

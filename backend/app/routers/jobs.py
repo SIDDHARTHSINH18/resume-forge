@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from ..services.pipeline import UploadError, retry_resume
-from ..util import safe_join_under
+from ..util import jloads, safe_join_under
 
 router = APIRouter(prefix="/api", tags=["processing"])
 
@@ -20,6 +20,21 @@ JOB_PROGRESS_SQL = """
     FROM job_resumes jr JOIN resumes r ON r.id = jr.resume_id
 """
 
+# Candidates created from this job's resumes, summarised by the advisory
+# recommendation. Counts only — nothing here changes a score or a decision.
+JOB_MATCH_SQL = """
+    SELECT
+        COUNT(*) AS candidates,
+        SUM(CASE WHEN c.recommendation = 'PRIORITY_REVIEW' THEN 1 ELSE 0 END) AS priority,
+        SUM(CASE WHEN c.recommendation = 'INTERVIEW_RECOMMENDATION' THEN 1 ELSE 0 END) AS interview,
+        SUM(CASE WHEN c.recommendation = 'MANUAL_REVIEW' THEN 1 ELSE 0 END) AS manual,
+        SUM(CASE WHEN c.recommendation = 'DOES_NOT_MEET' THEN 1 ELSE 0 END) AS not_met,
+        SUM(CASE WHEN c.missing_required_count > 0 THEN 1 ELSE 0 END) AS missing_required,
+        SUM(CASE WHEN c.human_decision IS NOT NULL THEN 1 ELSE 0 END) AS decided,
+        AVG(c.overall_score) AS avg_score
+    FROM candidates c JOIN job_resumes jr ON jr.resume_id = c.resume_id
+"""
+
 
 def _job_dict(ctx, conn, row) -> dict:
     counts = conn.execute(JOB_PROGRESS_SQL + " WHERE jr.job_id = ?", (row["id"],)).fetchone()
@@ -29,8 +44,12 @@ def _job_dict(ctx, conn, row) -> dict:
     processing = counts["processing"] or 0
     queued = counts["queued"] or 0
     profile = conn.execute(
-        "SELECT id, title, type FROM screening_profiles WHERE id = ?", (row["profile_id"],)
+        "SELECT id, title, type, required_skills, preferred_skills, experience_requirement"
+        " FROM screening_profiles WHERE id = ?",
+        (row["profile_id"],),
     ).fetchone()
+    match = conn.execute(JOB_MATCH_SQL + " WHERE jr.job_id = ?", (row["id"],)).fetchone()
+    avg_score = match["avg_score"]
     return {
         "id": row["id"],
         "profile_id": row["profile_id"],
@@ -48,6 +67,21 @@ def _job_dict(ctx, conn, row) -> dict:
         "created_at": row["created_at"],
         "started_at": row["started_at"],
         "finished_at": row["finished_at"],
+        "requirements": {
+            "required_skills": jloads(profile["required_skills"], []) if profile else [],
+            "preferred_skills": jloads(profile["preferred_skills"], []) if profile else [],
+            "experience_requirement": profile["experience_requirement"] if profile else None,
+        },
+        "match": {
+            "candidates": match["candidates"] or 0,
+            "priority": match["priority"] or 0,
+            "interview": match["interview"] or 0,
+            "manual": match["manual"] or 0,
+            "not_met": match["not_met"] or 0,
+            "missing_required": match["missing_required"] or 0,
+            "decided": match["decided"] or 0,
+            "avg_score": round(avg_score, 1) if avg_score is not None else None,
+        },
     }
 
 

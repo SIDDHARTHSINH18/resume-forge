@@ -2,7 +2,15 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { candidateFixture, dashboardFixture, installFetchMock, profileFixture, res, settingsFixture } from "./mockApi";
+import {
+  candidateFixture,
+  dashboardFixture,
+  installFetchMock,
+  profileFixture,
+  recentDecisionFixture,
+  res,
+  settingsFixture,
+} from "./mockApi";
 import { renderApp } from "./renderApp";
 
 describe("app shell", () => {
@@ -67,7 +75,7 @@ describe("app shell", () => {
     installFetchMock((url) => {
       if (url === "/api/settings") return res(200, settingsFixture());
       if (url === "/api/dashboard") {
-        return res(200, dashboardFixture({ candidates: { total: 0, needs_review: 0, priority_review: 0, interview_recommended: 0, shortlisted: 0, interview_stage: 0, on_hold: 0, closed: 0, duplicates: 0, ai_failed: 0 }, resumes: { total: 0, processed: 0, processing: 0, failed: 0 }, recent_profiles: [], activity: [] }));
+        return res(200, dashboardFixture({ candidates: { total: 0, needs_review: 0, priority_review: 0, interview_recommended: 0, shortlisted: 0, interview_stage: 0, hired: 0, on_hold: 0, closed: 0, duplicates: 0, ai_failed: 0, demo: 0, real: 0 }, resumes: { total: 0, processed: 0, processing: 0, failed: 0 }, recent_profiles: [], recent_decisions: [], activity: [] }));
       }
       return undefined;
     });
@@ -75,5 +83,59 @@ describe("app shell", () => {
     renderApp("/");
 
     expect(await screen.findByText("No candidates yet")).toBeInTheDocument();
+  });
+
+  it("shows the hiring pipeline stages with live counts and working links", async () => {
+    installFetchMock((url) => {
+      if (url === "/api/settings") return res(200, settingsFixture());
+      if (url === "/api/dashboard") {
+        return res(
+          200,
+          dashboardFixture({
+            candidates: { total: 7, needs_review: 2, priority_review: 1, interview_recommended: 1, shortlisted: 2, interview_stage: 1, hired: 1, on_hold: 1, closed: 0, duplicates: 0, ai_failed: 0, demo: 0, real: 7 },
+          }),
+        );
+      }
+      return undefined;
+    });
+
+    renderApp("/");
+
+    expect(await screen.findByText("Hiring pipeline")).toBeInTheDocument();
+    const pipeline = screen.getByText("Hiring pipeline").closest(".card") as HTMLElement;
+    const awaiting = within(pipeline).getByRole("link", { name: /Awaiting review/ });
+    expect(within(awaiting).getByText("2")).toBeInTheDocument();
+    const hired = within(pipeline).getByRole("link", { name: /Hired/ });
+    expect(within(hired).getByText("1")).toBeInTheDocument();
+    expect(hired).toHaveAttribute("href", "/candidates?status=HIRED");
+  });
+
+  it("lists the most recent HR decisions with who decided and links to the candidate", async () => {
+    installFetchMock((url) => {
+      if (url === "/api/settings") return res(200, settingsFixture());
+      if (url === "/api/dashboard") {
+        return res(
+          200,
+          dashboardFixture({
+            recent_decisions: [
+              recentDecisionFixture(),
+              recentDecisionFixture({ id: 12, name: "Demo Person", decision: "hold", decision_label: "Put on hold", is_demo: true, decided_by: "Local Reviewer" }),
+            ],
+          }),
+        );
+      }
+      return undefined;
+    });
+
+    renderApp("/");
+
+    expect(await screen.findByText("Recent HR decisions")).toBeInTheDocument();
+    const card = screen.getByText("Recent HR decisions").closest(".card") as HTMLElement;
+    expect(within(card).getByRole("link", { name: "Anita Rao" })).toHaveAttribute("href", "/candidates/11");
+    expect(within(card).getByText("Shortlisted")).toBeInTheDocument();
+    expect(within(card).getByText("Put on hold")).toBeInTheDocument();
+    // demo decisions stay visibly flagged on the card
+    expect(within(card).getByRole("link", { name: "Demo Person" })).toBeInTheDocument();
+    expect(within(card).getByText("demo")).toBeInTheDocument();
   });
 });

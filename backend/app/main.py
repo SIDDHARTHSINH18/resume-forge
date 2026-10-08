@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .context import Ctx
-from .routers import candidates, dashboard, demo, jobs, profiles, settings, sources
+from .routers import candidates, comms, dashboard, demo, jobs, profiles, settings, sources
 from .services.pipeline import JobRunner
 
 logging.basicConfig(
@@ -36,7 +36,7 @@ def create_app(
         ctx.jobs.start()
 
     app = FastAPI(
-        title="AI Resume Screening & Candidate Shortlisting Platform",
+        title="MeritOS — AI Hiring Operating Layer",
         version=__version__,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
@@ -88,6 +88,7 @@ def create_app(
         settings.router,
         demo.router,
         sources.router,
+        comms.router,
     ):
         app.include_router(router)
 

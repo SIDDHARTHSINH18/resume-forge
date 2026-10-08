@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { Link } from "react-router-dom";
@@ -87,6 +88,53 @@ export function LoadingLine({ text = "Loading…" }: { text?: string }) {
     <div className="loading-line" role="status">
       <Spinner />
       <span>{text}</span>
+    </div>
+  );
+}
+
+export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
+  return <div className={`skeleton${className ? ` ${className}` : ""}`} style={style} aria-hidden="true" />;
+}
+
+export function SkeletonStats({ count = 5 }: { count?: number }) {
+  return (
+    <div className="stat-grid" aria-hidden="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <div className="stat" key={i}>
+          <Skeleton className="skeleton-kpi" />
+          <Skeleton className="skeleton-label" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonRows({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="skeleton-rows" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div className="skeleton-row" key={i}>
+          <Skeleton className="skeleton-line" style={{ width: "42%" }} />
+          <Skeleton className="skeleton-line" style={{ width: "20%" }} />
+          <Skeleton className="skeleton-line" style={{ width: "14%" }} />
+          <Skeleton className="skeleton-pill" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonCard({ lines = 3 }: { lines?: number }) {
+  return (
+    <div className="card" aria-hidden="true">
+      <div className="card-header">
+        <Skeleton className="skeleton-title" />
+      </div>
+      <div className="card-body">
+        {Array.from({ length: lines }).map((_, i) => (
+          <Skeleton className="skeleton-line" key={i} style={{ width: `${92 - i * 9}%`, marginBottom: 10 }} />
+        ))}
+      </div>
     </div>
   );
 }

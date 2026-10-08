@@ -13,13 +13,131 @@ import {
 } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { formatBytes, formatRelative, jobStatusBadge, jobStatusLabel } from "../format";
-import type { Job, ScreeningProfile, UploadResult } from "../types";
+import type { Job, ProfileInsights, ScreeningProfile, UploadResult } from "../types";
 
 const REQUIREMENT_LABELS: Record<string, string> = {
   required: "Required",
   preferred: "Preferred",
   not_required: "Not required",
 };
+
+const PATTERN_LABELS: Record<string, string> = {
+  advanced_pattern: "Advanced candidates",
+  rejection_pattern: "Closed candidates",
+  experience_pattern: "Experience level",
+};
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+};
+
+function confidenceBadgeClass(confidence: string): string {
+  if (confidence === "high") return "badge badge-success";
+  if (confidence === "medium") return "badge badge-outline";
+  return "badge badge-neutral";
+}
+
+function InsightsCard({ profileId }: { profileId: number }) {
+  const [insights, setInsights] = useState<ProfileInsights | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .profileInsights(profileId)
+      .then((data) => {
+        if (!cancelled) setInsights(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load insights.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  if (error) {
+    return (
+      <Card kicker="HR intelligence · advisory" title="HR preference insights" className="mt-3">
+        <p className="faint small">{error}</p>
+      </Card>
+    );
+  }
+  if (!insights) {
+    return (
+      <Card kicker="HR intelligence · advisory" title="HR preference insights" className="mt-3">
+        <LoadingLine text="Computing insights…" />
+      </Card>
+    );
+  }
+
+  const { decisions } = insights;
+  return (
+    <Card kicker="HR intelligence · advisory" title="HR preference insights" className="mt-3">
+      <div className="kv">
+        <dt>Decisions recorded</dt>
+        <dd className="num">{decisions.total}</dd>
+        <dt>Advanced</dt>
+        <dd className="num">{decisions.advanced}</dd>
+        <dt>Closed</dt>
+        <dd className="num">{decisions.rejected}</dd>
+        <dt>On hold</dt>
+        <dd className="num">{decisions.on_hold}</dd>
+        {decisions.demo > 0 && (
+          <>
+            <dt>From demo data</dt>
+            <dd className="num">
+              {decisions.demo} <span className="faint">(synthetic)</span>
+            </dd>
+          </>
+        )}
+      </div>
+
+      <hr className="hr" />
+      {!insights.enough_data && <Notice kind="neutral" icon="info">{insights.note}</Notice>}
+
+      {insights.patterns.length > 0 && (
+        <>
+          <div className="section-title mt-3">Observed patterns</div>
+          {insights.patterns.map((pattern, index) => (
+            <div className="insight-row" key={index}>
+              <div className="row between wrap" style={{ gap: 8 }}>
+                <span className="cell-main">{PATTERN_LABELS[pattern.kind] ?? pattern.kind}</span>
+                <span className={confidenceBadgeClass(pattern.confidence)}>
+                  {CONFIDENCE_LABELS[pattern.confidence] ?? pattern.confidence}
+                </span>
+              </div>
+              <p className="small muted mt-1" style={{ marginBottom: 4 }}>{pattern.text}</p>
+              <span className="field-hint">
+                Evidence: {pattern.support} of {pattern.sample_size} decision
+                {pattern.sample_size === 1 ? "" : "s"}
+                {pattern.skills.length > 0 ? ` · skills: ${pattern.skills.join(", ")}` : ""}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {insights.enough_data && insights.patterns.length === 0 && (
+        <p className="faint small">
+          {decisions.total} decision{decisions.total === 1 ? "" : "s"} recorded, but no skill or
+          experience pattern repeats often enough to state as a trend. MeritOS does not invent one.
+        </p>
+      )}
+
+      <hr className="hr" />
+      <p className="field-hint">
+        <Icon name="shield" size={12} /> {insights.requirement_note}
+      </p>
+      <p className="field-hint">
+        Insights describe past reviewer decisions — they are advisory only, never used to train
+        anything, and can never override the stated job requirements or make a decision.
+      </p>
+    </Card>
+  );
+}
 
 function UploadPanel({
   profile,
@@ -30,18 +148,45 @@ function UploadPanel({
 }) {
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
   const [failures, setFailures] = useState<{ filename: string; reason: string }[]>([]);
+  const [skipped, setSkipped] = useState(0);
   const [dragging, setDragging] = useState(false);
+
+  // `webkitdirectory` is non-standard for React's type definitions but is how
+  // browsers expose a folder picker; set it imperatively on mount.
+  useEffect(() => {
+    folderRef.current?.setAttribute("webkitdirectory", "");
+  }, []);
+
+  const fileKey = (file: File) => `${file.webkitRelativePath || file.name}-${file.size}`;
+  const fileLabel = (file: File) => file.webkitRelativePath || file.name;
 
   const addFiles = (incoming: FileList | null) => {
     if (!incoming) return;
     const next = [...files];
     for (const file of Array.from(incoming)) {
-      if (!next.some((item) => item.name === file.name && item.size === file.size)) next.push(file);
+      if (!next.some((item) => fileKey(item) === fileKey(file))) next.push(file);
     }
+    setFiles(next);
+  };
+
+  const addFolderFiles = (incoming: FileList | null) => {
+    if (!incoming) return;
+    const next = [...files];
+    let skippedCount = 0;
+    for (const file of Array.from(incoming)) {
+      const lower = file.name.toLowerCase();
+      if (![".pdf", ".docx", ".txt"].some((extension) => lower.endsWith(extension))) {
+        skippedCount += 1;
+        continue;
+      }
+      if (!next.some((item) => fileKey(item) === fileKey(file))) next.push(file);
+    }
+    setSkipped(skippedCount);
     setFiles(next);
   };
 
@@ -61,6 +206,7 @@ function UploadPanel({
         toast.error(`${result.failures.length} file(s) were rejected before processing.`);
       }
       setFiles([]);
+      setSkipped(0);
       if (inputRef.current) inputRef.current.value = "";
       onUploaded();
     } catch (err) {
@@ -110,7 +256,9 @@ function UploadPanel({
           <Icon name="upload" size={20} />
         </div>
         <div className="empty-title">Drop resumes here</div>
-        <div className="empty-desc">PDF, DOCX or TXT · multiple files · up to 10 MB each</div>
+        <div className="empty-desc">
+          PDF, DOCX or TXT · multiple files or a whole folder · up to 10 MB each
+        </div>
         <input
           ref={inputRef}
           id="resume-files"
@@ -120,20 +268,41 @@ function UploadPanel({
           style={{ display: "none" }}
           onChange={(event) => addFiles(event.target.files)}
         />
-        <button type="button" className="btn btn-secondary" onClick={() => inputRef.current?.click()}>
-          <Icon name="file" size={14} />
-          Choose files
-        </button>
+        <input
+          ref={folderRef}
+          id="resume-folder"
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={(event) => addFolderFiles(event.target.files)}
+        />
+        <div className="row" style={{ gap: 8, justifyContent: "center" }}>
+          <button type="button" className="btn btn-secondary" onClick={() => inputRef.current?.click()}>
+            <Icon name="file" size={14} />
+            Choose files
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => folderRef.current?.click()}>
+            <Icon name="upload" size={14} />
+            Choose folder
+          </button>
+        </div>
       </div>
+
+      {skipped > 0 && (
+        <p className="field-hint">
+          {skipped} non-resume file{skipped === 1 ? "" : "s"} skipped — only PDF, DOCX and TXT files
+          enter the pipeline.
+        </p>
+      )}
 
       {files.length > 0 && (
         <div className="mt-3">
           {files.map((file) => (
-            <div className="row between" key={`${file.name}-${file.size}`} style={{ padding: "6px 0" }}>
+            <div className="row between" key={fileKey(file)} style={{ padding: "6px 0" }}>
               <span className="row" style={{ gap: 8, minWidth: 0 }}>
                 <Icon name="file" size={14} />
-                <span className="grow" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {file.name}
+                <span className="grow" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={fileLabel(file)}>
+                  {fileLabel(file)}
                 </span>
                 <span className="faint small nowrap">{formatBytes(file.size)}</span>
               </span>
@@ -430,6 +599,8 @@ export function ProfileDetailPage() {
                 Open review queue
               </Link>
             </Card>
+
+            <InsightsCard profileId={profile.id} />
 
             <Card title="Scoring model" className="mt-3">
               <div className="kv">

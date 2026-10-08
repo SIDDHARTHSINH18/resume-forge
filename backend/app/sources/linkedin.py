@@ -24,7 +24,10 @@ class LinkedInSource(ResumeSource):
         return SourceStatus(
             state="UNAVAILABLE",
             message=LINKEDIN_MESSAGE,
-            detail="Supply approved official API access (partner programme) to enable this connector.",
+            detail=(
+                "Supply approved official API access (partner programme) to enable this connector. "
+                "Meanwhile, profile URLs can be stored manually in the intake ledger on the Resume Sources page."
+            ),
         )
 
     def connect(self, ctx, payload: dict) -> dict:

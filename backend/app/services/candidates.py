@@ -3,12 +3,36 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from ..audit import record
 from ..scoring import ScoringResult
 from ..util import jdumps, jloads, now_iso
+from . import hr_memory
 
 EXPERIENCE_LABELS = ((70, "Strong"), (45, "Medium"), (0.001, "Low"), (0.0, "None"))
+
+
+def created_after(value: str | None) -> str | None:
+    """ISO cutoff for the "Today / Last 7 days" views (UTC, same format as now_iso)."""
+    key = str(value or "").strip().lower()
+    now = datetime.now(timezone.utc)
+    if key == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(timespec="seconds")
+    if key in ("7d", "last_7_days", "last7"):
+        return (now - timedelta(days=7)).isoformat(timespec="seconds")
+    return None
+
+
+def demo_scope_clause(value: str | None, column: str = "is_demo") -> str | None:
+    """SQL fragment for the "Demo only / Real only" switch, or None for all."""
+    key = str(value or "").strip().lower()
+    if key == "demo":
+        return f"{column} = 1"
+    if key == "real":
+        return f"{column} = 0"
+    return None
+
 
 STATUS_LABELS = {
     "REVIEW_REQUIRED": "Review required",
@@ -61,8 +85,9 @@ def create_candidate(
         """INSERT INTO candidates
            (profile_id, resume_id, name, email, phone, location, links, dob_text, status,
             recommendation, overall_score, academic_value, academic_type, ai_status,
-            duplicate_of, duplicate_signals, text_signature, is_demo, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)""",
+            duplicate_of, duplicate_signals, text_signature, is_demo,
+            missing_required_count, guardrail, guardrail_detail, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             profile_id,
             resume_id,
@@ -81,6 +106,9 @@ def create_candidate(
             jdumps(duplicate_signals),
             jdumps(signature),
             1 if is_demo else 0,
+            len(result.missing_required_skills),
+            ",".join(result.guardrail_codes),
+            result.guardrail_detail,
             now,
             now,
         ),
@@ -198,6 +226,21 @@ def save_scores(conn: sqlite3.Connection, candidate_id: int, result: ScoringResu
             for component in result.components
         ],
     )
+    # Keep the guardrail summary in sync with the score it came from, so a
+    # re-score after a profile edit cannot leave a stale "requirement missing"
+    # flag on the candidate row.
+    conn.execute(
+        """UPDATE candidates
+           SET missing_required_count = ?, guardrail = ?, guardrail_detail = ?, updated_at = ?
+           WHERE id = ?""",
+        (
+            len(result.missing_required_skills),
+            ",".join(result.guardrail_codes),
+            result.guardrail_detail,
+            now_iso(),
+            candidate_id,
+        ),
+    )
 
 
 def status_for_recommendation(recommendation: str) -> str:
@@ -291,6 +334,13 @@ def list_candidates(conn: sqlite3.Connection, params: dict) -> dict:
             where.append(clause)
     if params.get("duplicates_only"):
         where.append("c.duplicate_of IS NOT NULL")
+    data_scope = demo_scope_clause(params.get("data_scope"), column="c.is_demo")
+    if data_scope:
+        where.append(data_scope)
+    cutoff = created_after(params.get("date_range"))
+    if cutoff:
+        where.append("c.created_at >= ?")
+        args.append(cutoff)
 
     where_sql = f" WHERE {' AND '.join(where)}" if where else ""
 
@@ -362,6 +412,9 @@ def list_candidates(conn: sqlite3.Connection, params: dict) -> dict:
                 "recommendation": data["recommendation"],
                 "status": data["status"],
                 "status_label": STATUS_LABELS.get(data["status"], data["status"]),
+                "guardrail": str(data.get("guardrail") or ""),
+                "guardrail_detail": str(data.get("guardrail_detail") or ""),
+                "missing_required_count": int(data.get("missing_required_count") or 0),
                 "ai_status": data["ai_status"],
                 "resume_status": data["resume_status"],
                 "duplicate_of": data["duplicate_of"],
@@ -512,6 +565,10 @@ def candidate_detail(conn: sqlite3.Connection, candidate_id: int) -> dict | None
         {"id": row["id"], "name": row["name"], "signals": jloads(row["duplicate_signals"], [])}
         for row in related
     ]
+    # HR decision memory + the explainable recommendation. Both are read-only
+    # derivations: they describe what happened, they cannot change a score.
+    data["decision_memory"] = hr_memory.decision_history(conn, candidate_id)
+    data["explanation"] = hr_memory.explain_candidate(conn, data)
     return data
 
 
@@ -535,6 +592,7 @@ DECISION_TO_STATUS = {
     "shortlist": "SHORTLISTED",
     "hold": "ON_HOLD",
     "close": "CLOSED",
+    "hire": "HIRED",
 }
 
 DECISION_LABELS = {
@@ -542,6 +600,7 @@ DECISION_LABELS = {
     "shortlist": "Shortlisted",
     "hold": "Put on hold",
     "close": "Closed",
+    "hire": "Hired",
 }
 
 
@@ -589,4 +648,6 @@ def apply_decision(conn: sqlite3.Connection, candidate_id: int, decision: str, r
             profile_id=row["profile_id"],
             message=f"Status changed: {previous_status} -> {new_status}",
         )
+    # Snapshot the decision + evidence into memory for advisory insights only.
+    hr_memory.record_decision(conn, row, decision=decision, reason=reason, author=author, decided_at=now)
     return candidate_detail(conn, candidate_id)

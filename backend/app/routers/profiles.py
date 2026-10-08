@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from ..audit import record
 from ..schemas import ProfileIn
+from ..services import hr_memory
 from ..services.pipeline import UploadError, handle_upload
 from ..services.profiles import (
     create_profile,
@@ -84,6 +85,22 @@ def archive(request: Request, profile_id: int):
             message=f"Profile '{profile['title']}' {'archived' if new_state else 'restored'}",
         )
         return get_profile(conn, profile_id)
+    finally:
+        conn.close()
+
+
+@router.get("/{profile_id}/insights")
+def insights(request: Request, profile_id: int):
+    """Advisory HR preference insights derived from recorded decisions.
+
+    Read-only and explainable: patterns appear only once enough decisions exist,
+    and each pattern states its support and sample size.
+    """
+    conn = ctx_of(request).connect()
+    try:
+        if get_profile(conn, profile_id) is None:
+            raise HTTPException(status_code=404, detail="Screening profile not found.")
+        return hr_memory.profile_insights(conn, profile_id)
     finally:
         conn.close()
 

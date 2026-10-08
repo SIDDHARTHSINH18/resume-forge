@@ -104,7 +104,7 @@ class NoteIn(BaseModel):
 
 
 class DecisionIn(BaseModel):
-    decision: Literal["move_to_interview", "shortlist", "hold", "close"]
+    decision: Literal["move_to_interview", "shortlist", "hold", "close", "hire"]
     reason: str = Field(default="", max_length=4000)
     author: str = Field(default="Local Reviewer", max_length=120)
 
@@ -112,6 +112,71 @@ class DecisionIn(BaseModel):
     @classmethod
     def strip(cls, value: str) -> str:
         return value.strip()
+
+
+EmailType = Literal[
+    "interview_invitation",
+    "shortlist_confirmation",
+    "rejection",
+    "assignment",
+    "follow_up",
+    "general",
+]
+
+
+class EmailDraftIn(BaseModel):
+    email_type: EmailType
+    actor: str = Field(default="Local Reviewer", max_length=120)
+
+    @field_validator("actor")
+    @classmethod
+    def strip(cls, value: str) -> str:
+        return value.strip()
+
+
+class EmailUpdateIn(BaseModel):
+    recipient: str = Field(default="", max_length=254)
+    subject: str = Field(default="", max_length=400)
+    body: str = Field(default="", max_length=40000)
+    actor: str = Field(default="Local Reviewer", max_length=120)
+
+    @field_validator("recipient", "subject", "actor")
+    @classmethod
+    def strip(cls, value: str) -> str:
+        return (value or "").strip()
+
+
+class EmailApproveIn(BaseModel):
+    revision: int = Field(ge=1)
+    actor: str = Field(default="Local Reviewer", max_length=120)
+
+    @field_validator("actor")
+    @classmethod
+    def strip(cls, value: str) -> str:
+        return value.strip()
+
+
+class EmailCancelIn(BaseModel):
+    actor: str = Field(default="Local Reviewer", max_length=120)
+    reason: str = Field(default="", max_length=2000)
+
+    @field_validator("actor", "reason")
+    @classmethod
+    def strip(cls, value: str) -> str:
+        return (value or "").strip()
+
+
+class EmailSendIn(BaseModel):
+    revision: int = Field(ge=1)
+    content_hash: str = Field(default="", max_length=128)
+    recipient: str = Field(default="", max_length=254)
+    confirm: bool = False
+    actor: str = Field(default="Local Reviewer", max_length=120)
+
+    @field_validator("content_hash", "recipient", "actor")
+    @classmethod
+    def strip(cls, value: str) -> str:
+        return (value or "").strip()
 
 
 class AISettingsIn(BaseModel):

@@ -309,11 +309,189 @@ SCHEMA_V2 = [
     "CREATE INDEX IF NOT EXISTS idx_source_items_hash ON source_items(source_id, content_hash)",
 ]
 
+# v4: HR decision memory, job-requirement guardrails, manual intake records and
+# the candidate email workflow (drafts + approvals + send attempts).
+#
+# Design rules encoded here:
+#   * decision_memory is a *derived* record of what a human already decided; it
+#     feeds insights and must never be able to change a score by itself.
+#   * candidates.guardrail stores why the recommendation was capped. It is
+#     advisory metadata, not an auto-rejection: the recommendation bucket stays.
+#   * candidate_emails starts as a DRAFT and can only reach APPROVED through the
+#     explicit approval endpoint; sending is a separate, confirmed action, and
+#     every attempt (including blocked ones) is written to email_send_log.
+SCHEMA_V4 = [
+    """
+    CREATE TABLE IF NOT EXISTS decision_memory (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        candidate_id     INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        profile_id       INTEGER NOT NULL REFERENCES screening_profiles(id) ON DELETE CASCADE,
+        decision         TEXT NOT NULL
+                         CHECK (decision IN ('move_to_interview','shortlist','hold','close','hire')),
+        previous_decision TEXT,
+        reason           TEXT NOT NULL DEFAULT '',
+        matched_required TEXT NOT NULL DEFAULT '[]',
+        missing_required TEXT NOT NULL DEFAULT '[]',
+        matched_preferred TEXT NOT NULL DEFAULT '[]',
+        experience_level TEXT NOT NULL DEFAULT 'unknown',
+        source_kind      TEXT NOT NULL DEFAULT 'manual',
+        overall_score    REAL,
+        recommendation   TEXT,
+        decided_by       TEXT NOT NULL DEFAULT '',
+        decided_at       TEXT NOT NULL,
+        is_demo          INTEGER NOT NULL DEFAULT 0,
+        created_at       TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_decision_memory_profile ON decision_memory(profile_id, decision)",
+    "CREATE INDEX IF NOT EXISTS idx_decision_memory_candidate ON decision_memory(candidate_id)",
+    """
+    CREATE TABLE IF NOT EXISTS source_records (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_kind   TEXT NOT NULL,
+        profile_id    INTEGER REFERENCES screening_profiles(id),
+        title         TEXT NOT NULL DEFAULT '',
+        url           TEXT NOT NULL DEFAULT '',
+        notes         TEXT NOT NULL DEFAULT '',
+        contact_name  TEXT NOT NULL DEFAULT '',
+        contact_email TEXT NOT NULL DEFAULT '',
+        referrer      TEXT NOT NULL DEFAULT '',
+        status        TEXT NOT NULL DEFAULT 'RECORDED'
+                      CHECK (status IN ('RECORDED','SCREENED','DISCARDED')),
+        resume_id     INTEGER REFERENCES resumes(id),
+        created_by    TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_source_records_kind ON source_records(source_kind, created_at)",
+    """
+    CREATE TABLE IF NOT EXISTS candidate_emails (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        candidate_id  INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        profile_id    INTEGER REFERENCES screening_profiles(id),
+        email_type    TEXT NOT NULL
+                      CHECK (email_type IN ('interview_invitation','shortlist_confirmation',
+                                            'rejection','assignment','follow_up')),
+        recipient     TEXT NOT NULL DEFAULT '',
+        subject       TEXT NOT NULL DEFAULT '',
+        body          TEXT NOT NULL DEFAULT '',
+        status        TEXT NOT NULL DEFAULT 'DRAFT'
+                      CHECK (status IN ('DRAFT','APPROVED','CANCELLED')),
+        drafted_by    TEXT NOT NULL DEFAULT '',
+        approved_by   TEXT NOT NULL DEFAULT '',
+        approved_at   TEXT,
+        sent_at       TEXT,
+        sender_account TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_candidate_emails_candidate ON candidate_emails(candidate_id, status)",
+    """
+    CREATE TABLE IF NOT EXISTS email_send_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        email_id    INTEGER NOT NULL REFERENCES candidate_emails(id) ON DELETE CASCADE,
+        candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        outcome     TEXT NOT NULL
+                    CHECK (outcome IN ('SENT','FAILED','BLOCKED_NOT_APPROVED','BLOCKED_NOT_CONNECTED',
+                                       'BLOCKED_STATUS_MISMATCH','BLOCKED_CONFIRMATION_REQUIRED','CANCELLED')),
+        sender_account TEXT NOT NULL DEFAULT '',
+        recipient     TEXT NOT NULL DEFAULT '',
+        subject       TEXT NOT NULL DEFAULT '',
+        actor         TEXT NOT NULL DEFAULT '',
+        detail        TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_email_send_log_email ON email_send_log(email_id, created_at)",
+    "ALTER TABLE candidates ADD COLUMN missing_required_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE candidates ADD COLUMN guardrail TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE candidates ADD COLUMN guardrail_detail TEXT NOT NULL DEFAULT ''",
+]
+
+# v5: the communication workflow gets its enforcement columns and a wider
+# outcome vocabulary.
+#
+#   * candidate_emails gains 'general' as an allowed type, a revision counter
+#     and the hash of the exact content that was approved. An approval is only
+#     valid for one revision: editing the draft afterwards invalidates it, and
+#     the send endpoint refuses content that does not match the approval.
+#   * email_send_log gains SENDING (written before the provider call so a
+#     crashed attempt stays visible), UNKNOWN (the provider gave no definitive
+#     outcome — never silently retried) and one BLOCKED_* outcome per server
+#     gate (recipient mismatch, expired approval, duplicate send, demo record,
+#     unresolved earlier attempt).
+#
+# Both tables shipped unused in v4 — no code path ever wrote to them — so the
+# rebuilds below drag any hypothetical rows across unchanged.
+SCHEMA_V5 = [
+    """CREATE TABLE candidate_emails_v5 (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        candidate_id  INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        profile_id    INTEGER REFERENCES screening_profiles(id),
+        email_type    TEXT NOT NULL
+                      CHECK (email_type IN ('interview_invitation','shortlist_confirmation',
+                                            'rejection','assignment','follow_up','general')),
+        recipient     TEXT NOT NULL DEFAULT '',
+        subject       TEXT NOT NULL DEFAULT '',
+        body          TEXT NOT NULL DEFAULT '',
+        status        TEXT NOT NULL DEFAULT 'DRAFT'
+                      CHECK (status IN ('DRAFT','APPROVED','CANCELLED')),
+        revision      INTEGER NOT NULL DEFAULT 1,
+        content_hash  TEXT NOT NULL DEFAULT '',
+        approved_revision INTEGER,
+        drafted_by    TEXT NOT NULL DEFAULT '',
+        approved_by   TEXT NOT NULL DEFAULT '',
+        approved_at   TEXT,
+        sent_at       TEXT,
+        sender_account TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    )""",
+    """INSERT INTO candidate_emails_v5
+       (id, candidate_id, profile_id, email_type, recipient, subject, body, status,
+        drafted_by, approved_by, approved_at, sent_at, sender_account, created_at, updated_at)
+       SELECT id, candidate_id, profile_id, email_type, recipient, subject, body, status,
+              drafted_by, approved_by, approved_at, sent_at, sender_account, created_at, updated_at
+       FROM candidate_emails""",
+    "DROP TABLE candidate_emails",
+    "ALTER TABLE candidate_emails_v5 RENAME TO candidate_emails",
+    "CREATE INDEX IF NOT EXISTS idx_candidate_emails_candidate ON candidate_emails(candidate_id, status)",
+    """CREATE TABLE email_send_log_v5 (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        email_id    INTEGER NOT NULL REFERENCES candidate_emails(id) ON DELETE CASCADE,
+        candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+        outcome     TEXT NOT NULL
+                    CHECK (outcome IN ('SENDING','SENT','FAILED','UNKNOWN',
+                                       'BLOCKED_NOT_APPROVED','BLOCKED_NOT_CONNECTED',
+                                       'BLOCKED_STATUS_MISMATCH','BLOCKED_CONFIRMATION_REQUIRED',
+                                       'BLOCKED_RECIPIENT_MISMATCH','BLOCKED_APPROVAL_EXPIRED',
+                                       'BLOCKED_DUPLICATE_SEND','BLOCKED_UNRESOLVED_ATTEMPT',
+                                       'BLOCKED_DEMO_RECORD','CANCELLED')),
+        sender_account TEXT NOT NULL DEFAULT '',
+        recipient     TEXT NOT NULL DEFAULT '',
+        subject       TEXT NOT NULL DEFAULT '',
+        actor         TEXT NOT NULL DEFAULT '',
+        detail        TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL
+    )""",
+    """INSERT INTO email_send_log_v5
+       (id, email_id, candidate_id, outcome, sender_account, recipient, subject, actor, detail, created_at)
+       SELECT id, email_id, candidate_id, outcome, sender_account, recipient, subject, actor, detail, created_at
+       FROM email_send_log""",
+    "DROP TABLE email_send_log",
+    "ALTER TABLE email_send_log_v5 RENAME TO email_send_log",
+    "CREATE INDEX IF NOT EXISTS idx_email_send_log_email ON email_send_log(email_id, created_at)",
+]
+
 MIGRATIONS: list[tuple[int, list[str]]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
     # v3: keep truly-imported and duplicate scan findings as separate counters.
     (3, ["ALTER TABLE source_syncs ADD COLUMN already_imported INTEGER NOT NULL DEFAULT 0"]),
+    (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
 ]
 
 

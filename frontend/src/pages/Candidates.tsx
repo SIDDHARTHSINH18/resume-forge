@@ -37,6 +37,8 @@ const MORE_FILTER_KEYS = [
   "min_academic",
   "academic_type",
   "duplicates_only",
+  "data_scope",
+  "date_range",
 ] as const;
 
 const ALL_FILTER_KEYS = ["profile_id", "search", ...MORE_FILTER_KEYS] as const;
@@ -63,6 +65,7 @@ export function CandidatesPage() {
     for (const key of [
       "profile_id", "search", "degree", "skill", "recommendation", "status", "resume_status",
       "min_academic", "max_academic", "academic_type", "experience", "duplicates_only",
+      "data_scope", "date_range",
       "sort", "order", "page", "page_size",
     ] as const) {
       const value = params.get(key);
@@ -225,6 +228,26 @@ export function CandidatesPage() {
                   {profile.title}
                 </option>
               ))}
+            </select>
+            <select
+              className="select"
+              value={query.data_scope ?? ""}
+              onChange={(event) => update({ data_scope: event.target.value || null })}
+              aria-label="Filter by demo or real data"
+            >
+              <option value="">All candidates</option>
+              <option value="real">Real only</option>
+              <option value="demo">Demo only</option>
+            </select>
+            <select
+              className="select"
+              value={query.date_range ?? ""}
+              onChange={(event) => update({ date_range: event.target.value || null })}
+              aria-label="Filter by when the candidate was added"
+            >
+              <option value="">Added: any time</option>
+              <option value="today">Added today</option>
+              <option value="last_7_days">Added in the last 7 days</option>
             </select>
             <select
               className="select"

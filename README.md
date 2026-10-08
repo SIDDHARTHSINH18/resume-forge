@@ -1,4 +1,4 @@
-# ResumeForge
+# MeritOS
 
 <details>
 <summary><strong>⚡ Quick navigation</strong></summary>
@@ -9,7 +9,7 @@
 
 **Evidence-first candidate screening with human-controlled decisions.**
 
-ResumeForge is a local-first screening platform for recruitment and college admissions. It turns resumes into structured evidence, applies a deterministic screening model, optionally adds AI analysis, and leaves the final decision to a human reviewer.
+MeritOS is a local-first screening platform for recruitment and college admissions. It turns resumes into structured evidence, applies a deterministic screening model, optionally adds AI analysis, and leaves the final decision to a human reviewer.
 
 The design goal is simple:
 
@@ -72,7 +72,7 @@ Recommendation
 Human decision
 ```
 
-That separation is intentional. ResumeForge is not an autonomous hiring or rejection system.
+That separation is intentional. MeritOS is not an autonomous hiring or rejection system.
 
 ## Scoring model
 
@@ -176,6 +176,20 @@ A few decisions are deliberately conservative:
 
 ## Run locally
 
+### Dev ports
+
+The dev toolchain uses fixed ports so nothing collides with other
+local apps:
+
+| Service            | URL                          | Override                |
+| ------------------ | ---------------------------- | ----------------------- |
+| Backend (uvicorn)  | `http://127.0.0.1:8421`      | `BACKEND_PORT`          |
+| Frontend (Vite)    | `http://127.0.0.1:5421`      | `FRONTEND_PORT`         |
+
+`frontend/vite.config.ts` proxies `/api` to `http://127.0.0.1:8421`.
+If you change `BACKEND_PORT`, update the proxy target (or set the
+matching environment variable when running `npm run dev`).
+
 ### Backend
 
 ```bat
@@ -183,6 +197,7 @@ cd backend
 python -m venv .venv
 .venv\\Scripts\\python.exe -m pip install -r requirements.txt
 .venv\\Scripts\\python.exe -m pytest
+.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8421 --reload
 ```
 
 ### Frontend
@@ -192,9 +207,38 @@ cd frontend
 npm ci
 npm test
 npm run build
+npm run dev
 ```
 
-### Application
+### Gmail OAuth setup (optional)
+
+The app runs without Gmail. To connect the read-only Gmail importer,
+configure an OAuth client in Google Cloud Console, then either paste
+the credentials into the Sources → Gmail card, or export them as
+environment variables before starting the backend:
+
+```
+AILISTER_GMAIL_CLIENT_ID=<from Google Cloud Console>
+AILISTER_GMAIL_CLIENT_SECRET=<from Google Cloud Console>
+AILISTER_GMAIL_REDIRECT_URI=http://127.0.0.1:8421/api/sources/gmail/oauth/callback
+```
+
+Standard `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` /
+`GOOGLE_REDIRECT_URI` names are accepted as aliases (the AILISTER_-
+prefixed names take precedence when both are set).
+
+Register the redirect URI above — path is
+`/api/sources/gmail/oauth/callback`, not `/api/sources/gmail/callback`
+— in the "Authorized redirect URIs" list of the OAuth client. See
+[`backend/.env.example`](backend/.env.example) for the full template.
+
+If credentials are missing the Sources UI honestly shows
+"Gmail OAuth is not configured" and never fakes a connected state.
+Tokens, once issued, live in `backend/data/config.json` (git-ignored,
+local plaintext like the AI provider keys) — this is a documented
+limitation, not an OS keychain.
+
+### Application (production-style)
 
 For the production-style local run:
 

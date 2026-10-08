@@ -244,6 +244,72 @@ export interface AiAnalysis {
   confidence: string;
 }
 
+export interface DecisionMemoryRow {
+  id: number;
+  candidate_id: number;
+  profile_id: number;
+  profile_title?: string;
+  decision: "move_to_interview" | "shortlist" | "hold" | "close" | "hire";
+  previous_decision: string | null;
+  reason: string;
+  matched_required: string[];
+  missing_required: string[];
+  matched_preferred: string[];
+  experience_level: string;
+  source_kind: string;
+  overall_score: number | null;
+  recommendation: string | null;
+  decided_by: string;
+  decided_at: string;
+  is_demo: boolean;
+  created_at: string;
+}
+
+export interface HrPattern {
+  similarity: number;
+  based_on: number;
+  similar_candidates: number;
+  text: string;
+  confidence: "low" | "medium" | "high";
+  advisory_only: boolean;
+}
+
+export interface CandidateExplanation {
+  headline: string;
+  matched_required: { skill: string; detail?: string }[];
+  missing_required: string[];
+  weak_required: string[];
+  matched_preferred: { skill: string; detail?: string }[];
+  guardrail: { codes: string[]; detail: string; capped: boolean };
+  hr_pattern: HrPattern | null;
+  warnings: string[];
+  confidence: "low" | "medium" | "high";
+  score: number | null;
+  recommendation: string;
+  advisory_only: string;
+}
+
+export interface InsightPattern {
+  kind: "advanced_pattern" | "rejection_pattern" | "experience_pattern";
+  text: string;
+  skills: string[];
+  support: number;
+  sample_size: number;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface ProfileInsights {
+  profile_id: number;
+  profile_title: string | null;
+  decisions: { total: number; advanced: number; rejected: number; on_hold: number; demo: number };
+  required_skills: string[];
+  patterns: InsightPattern[];
+  requirement_note: string;
+  enough_data: boolean;
+  note: string;
+  advisory_only: boolean;
+}
+
 export interface CandidateDetail {
   id: number;
   profile_id: number;
@@ -287,6 +353,8 @@ export interface CandidateDetail {
   scores: ScoreRow[];
   reviews: ReviewRow[];
   audit: AuditRow[];
+  decision_memory?: DecisionMemoryRow[];
+  explanation?: CandidateExplanation;
 }
 
 export interface JobResume {
@@ -301,6 +369,23 @@ export interface JobResume {
   processed_at: string | null;
   duplicate_hash_of: number | null;
   candidate_id: number | null;
+}
+
+export interface JobRequirements {
+  required_skills: string[];
+  preferred_skills: string[];
+  experience_requirement: RequirementLevel | null;
+}
+
+export interface JobMatchOverview {
+  candidates: number;
+  priority: number;
+  interview: number;
+  manual: number;
+  not_met: number;
+  missing_required: number;
+  decided: number;
+  avg_score: number | null;
 }
 
 export interface Job {
@@ -320,6 +405,8 @@ export interface Job {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  requirements: JobRequirements;
+  match: JobMatchOverview;
   resumes?: JobResume[];
 }
 
@@ -331,7 +418,31 @@ export interface UploadResult {
   demo_files?: number;
 }
 
+export interface DemoWorkspaceOverview {
+  demo_candidates: number;
+  real_candidates: number;
+  demo_resumes: number;
+  demo_jobs: number;
+  demo_decisions: number;
+  demo_profiles: { id: number; title: string; archived: boolean }[];
+}
+
+export interface RecentDecision {
+  id: number;
+  name: string;
+  profile_title: string;
+  decision: string;
+  decision_label: string;
+  reason: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  overall_score: number | null;
+  status: string;
+  is_demo: boolean;
+}
+
 export interface DashboardData {
+  filters: { data_scope: string; date_range: string };
   candidates: {
     total: number;
     needs_review: number;
@@ -339,11 +450,15 @@ export interface DashboardData {
     interview_recommended: number;
     shortlisted: number;
     interview_stage: number;
+    hired: number;
     on_hold: number;
     closed: number;
     duplicates: number;
     ai_failed: number;
+    demo: number;
+    real: number;
   };
+  demo_workspace: DemoWorkspaceOverview;
   recommendations: {
     priority_review: number;
     interview_recommendation: number;
@@ -357,10 +472,12 @@ export interface DashboardData {
     title: string;
     type: ProfileType;
     candidate_count: number;
+    demo_count: number;
     resume_count: number;
     processed_count: number;
     updated_at: string;
   }[];
+  recent_decisions: RecentDecision[];
   activity: AuditRow[];
 }
 
@@ -399,6 +516,40 @@ export interface DemoStatus {
   exists: boolean;
   files: { filename: string; bytes: number }[];
   count: number;
+  workspace?: DemoWorkspaceOverview;
+}
+
+export interface DemoSeedResult {
+  profiles: { backend_id: number; frontend_id: number };
+  processed_jobs: number;
+  candidates: Record<string, number>;
+  decisions_applied: { candidate_id: number; decision: string }[];
+  note: string;
+}
+
+export interface DemoClearResult {
+  mode: "delete" | "archive";
+  method: string;
+  candidates_removed: number;
+  resumes_removed: number;
+  jobs_removed: number;
+  reviews_removed: number;
+  decisions_removed: number;
+  audit_events_removed: number;
+  resume_files_removed: number;
+  profiles: {
+    removed: number[];
+    archived: number[];
+    kept: { id: number; title: string; reason: string }[];
+  };
+  real_data_preserved: { candidates: number; note: string };
+  remaining: DemoWorkspaceOverview;
+}
+
+export interface DemoResetResult {
+  cleared: DemoClearResult;
+  seeded: DemoSeedResult;
+  note: string;
 }
 
 export interface AiTestResult {
@@ -420,6 +571,8 @@ export interface CandidateQuery {
   academic_type?: string;
   experience?: string;
   duplicates_only?: string;
+  data_scope?: string;
+  date_range?: string;
   sort?: string;
   order?: string;
   page?: string;
@@ -539,4 +692,176 @@ export interface SourcePreviewPayload {
   date_to?: string | null;
   sender?: string;
   keywords?: string[];
+}
+
+export type IntakeAvailability = "AVAILABLE" | "MANUAL_ONLY" | "UNAVAILABLE" | "COMING_SOON";
+
+export interface IntakeMethod {
+  key: string;
+  label: string;
+  availability: IntakeAvailability;
+  note: string;
+}
+
+export interface SourceRecordKindInfo {
+  kind: string;
+  label: string;
+  description: string;
+}
+
+export type SourceRecordStatus = "RECORDED" | "SCREENED" | "DISCARDED";
+
+export interface SourceRecordRow {
+  id: number;
+  source_kind: string;
+  profile_id: number | null;
+  profile_title: string | null;
+  title: string;
+  url: string;
+  notes: string;
+  contact_name: string;
+  contact_email: string;
+  referrer: string;
+  status: SourceRecordStatus;
+  status_label: string;
+  resume_id: number | null;
+  resume_filename: string | null;
+  candidate_id: number | null;
+  candidate_name: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SourceRecordsResponse {
+  items: SourceRecordRow[];
+  counts: { RECORDED: number; SCREENED: number; DISCARDED: number; total: number };
+  kinds: SourceRecordKindInfo[];
+  methods: IntakeMethod[];
+  note: string;
+}
+
+export interface SourceRecordPayload {
+  source_kind: string;
+  title?: string;
+  url?: string;
+  notes?: string;
+  contact_name?: string;
+  contact_email?: string;
+  referrer?: string;
+  profile_id?: number | null;
+  created_by?: string;
+}
+
+export interface PasteImportResult {
+  record_id: number;
+  resume_id: number;
+  job_id: number | null;
+  filename: string;
+  chars: number;
+  message: string;
+}
+
+export interface CsvImportResult {
+  profile: { id: number; title: string };
+  total_rows: number;
+  records_created: number;
+  records_skipped_duplicates: number;
+  resumes_queued: number;
+  empty_rows: number;
+  job_id: number | null;
+  invalid_rows: { row: number | null; reason: string }[];
+  skipped_rows: { row: number; reason: string }[];
+  unrecognised_columns: string[];
+  note: string;
+  message: string;
+}
+
+export type EmailDisplayState =
+  | "DRAFT"
+  | "APPROVED"
+  | "SENDING"
+  | "SENT"
+  | "FAILED"
+  | "CANCELLED"
+  | "UNKNOWN";
+
+export interface EmailTypeOption {
+  value: string;
+  label: string;
+  hint: string;
+}
+
+export interface EmailSendLogRow {
+  id: number;
+  outcome: string;
+  outcome_label: string;
+  recipient: string;
+  subject: string;
+  sender_account: string;
+  actor: string;
+  detail: string;
+  created_at: string;
+}
+
+export interface CandidateEmailRow {
+  id: number;
+  candidate_id: number;
+  profile_id: number | null;
+  email_type: string;
+  type_label: string;
+  recipient: string;
+  subject: string;
+  body: string;
+  status: string;
+  status_label: string;
+  display_state: EmailDisplayState;
+  display_label: string;
+  revision: number;
+  content_hash: string;
+  approved_revision: number | null;
+  approved_by: string;
+  approved_at: string | null;
+  approval_expires_at: string | null;
+  approved_expired: boolean;
+  sent_at: string | null;
+  sender_account: string;
+  drafted_by: string;
+  created_at: string;
+  updated_at: string;
+  last_send: EmailSendLogRow | null;
+  log?: EmailSendLogRow[];
+}
+
+export interface EmailProviderStatus {
+  provider: string;
+  connected: boolean;
+  account: string | null;
+  detail: string;
+}
+
+export interface CandidateEmailsResponse {
+  items: CandidateEmailRow[];
+  provider: EmailProviderStatus;
+  types: EmailTypeOption[];
+  approval_ttl_hours: number;
+  send_policy: string;
+  candidate: { id: number; name: string; email: string | null; is_demo: boolean };
+}
+
+export interface EmailSendOutcome {
+  outcome: string;
+  outcome_label: string;
+  sent: boolean;
+  message: string;
+  email: CandidateEmailRow;
+  log: EmailSendLogRow[];
+}
+
+export interface CommsStatus {
+  provider: EmailProviderStatus;
+  send_policy: string;
+  approval_ttl_hours: number;
+  types: { value: string; label: string }[];
+  recent_attempts: EmailSendLogRow[];
 }

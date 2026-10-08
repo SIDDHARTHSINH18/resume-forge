@@ -3,12 +3,22 @@ import type {
   AiTestResult,
   AuditRow,
   CandidateDetail,
+  CandidateEmailRow,
+  CandidateEmailsResponse,
   CandidateListResponse,
   CandidateQuery,
+  CommsStatus,
+  CsvImportResult,
   DashboardData,
+  DemoClearResult,
+  DemoResetResult,
+  DemoSeedResult,
   DemoStatus,
+  EmailSendOutcome,
   ExportRow,
   GmailConfigResult,
+  PasteImportResult,
+  ProfileInsights,
   Job,
   ProfilePayload,
   ResumeSourceCard,
@@ -18,6 +28,9 @@ import type {
   SourceImportResult,
   SourcePreview,
   SourcePreviewPayload,
+  SourceRecordPayload,
+  SourceRecordRow,
+  SourceRecordsResponse,
   SourceSyncRow,
   UploadResult,
 } from "./types";
@@ -83,9 +96,18 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export const api = {
-  health: () => request<{ status: string }>("/api/health"),
+  health: () =>
+    request<{
+      status: string;
+      application_id?: string;
+      application_name?: string;
+      environment?: string;
+      api_version?: string;
+      stability_lock?: { enabled: boolean; expires_at: string | null; expired: boolean };
+    }>("/api/health"),
 
-  dashboard: () => request<DashboardData>("/api/dashboard"),
+  dashboard: (params: { data_scope?: string; date_range?: string } = {}) =>
+    request<DashboardData>(`/api/dashboard${queryString(params)}`),
 
   profiles: (includeArchived = false) =>
     request<{ items: ScreeningProfile[] }>(
@@ -98,6 +120,7 @@ export const api = {
     request<ScreeningProfile>(`/api/profiles/${id}`, { ...json(payload), method: "PUT" }),
   archiveProfile: (id: number) =>
     request<ScreeningProfile>(`/api/profiles/${id}/archive`, { method: "POST" }),
+  profileInsights: (id: number) => request<ProfileInsights>(`/api/profiles/${id}/insights`),
 
   upload: async (profileId: number, files: File[]): Promise<UploadResult> => {
     const form = new FormData();
@@ -112,6 +135,14 @@ export const api = {
   demoGenerate: () => request<{ count: number; directory: string }>("/api/demo/generate", { method: "POST" }),
   demoUpload: (profileId: number) =>
     request<UploadResult>(`/api/demo/upload/${profileId}`, { method: "POST" }),
+  // `force` is the explicit confirmation for seeding on top of an existing demo
+  // workspace; without it the backend answers 409 and tells you to use Reset.
+  demoSeed: (force = false) =>
+    request<DemoSeedResult>(`/api/demo/seed${force ? "?force=true" : ""}`, { method: "POST" }),
+  demoClear: (mode: "delete" | "archive" = "delete") =>
+    request<DemoClearResult>(`/api/demo/clear?mode=${mode}`, { method: "POST" }),
+  demoReset: (mode: "delete" | "archive" = "delete") =>
+    request<DemoResetResult>(`/api/demo/reset?mode=${mode}`, { method: "POST" }),
 
   jobs: (profileId?: number) =>
     request<{ items: Job[] }>(`/api/jobs${queryString({ profile_id: profileId })}`),
@@ -195,6 +226,44 @@ export const api = {
     ),
   sourceSync: (id: number, syncId: number) =>
     request<SourceSyncRow>(`/api/sources/${id}/syncs/${syncId}`),
+
+  sourceRecords: (params: { profile_id?: number; status?: string; kind?: string } = {}) =>
+    request<SourceRecordsResponse>(`/api/sources/records${queryString(params)}`),
+  createSourceRecord: (payload: SourceRecordPayload) =>
+    request<SourceRecordRow>("/api/sources/records", json(payload)),
+  sourceRecordStatus: (id: number, status: string, actor = "") =>
+    request<SourceRecordRow>(`/api/sources/records/${id}/status`, json({ status, actor })),
+  sourcePaste: (payload: { profile_id: number; text: string; label?: string; actor?: string }) =>
+    request<PasteImportResult>("/api/sources/paste", json(payload)),
+  sourceCsv: (profileId: number, file: File, actor = ""): Promise<CsvImportResult> => {
+    const form = new FormData();
+    form.append("profile_id", String(profileId));
+    form.append("file", file, file.name);
+    if (actor) form.append("actor", actor);
+    return request<CsvImportResult>("/api/sources/csv", { method: "POST", body: form });
+  },
+
+  candidateEmails: (candidateId: number) =>
+    request<CandidateEmailsResponse>(`/api/candidates/${candidateId}/emails`),
+  createEmailDraft: (candidateId: number, emailType: string, actor: string) =>
+    request<CandidateEmailRow>(
+      `/api/candidates/${candidateId}/emails`,
+      json({ email_type: emailType, actor }),
+    ),
+  emailDetail: (id: number) => request<CandidateEmailRow>(`/api/emails/${id}`),
+  updateEmail: (
+    id: number,
+    payload: { recipient: string; subject: string; body: string; actor: string },
+  ) => request<CandidateEmailRow>(`/api/emails/${id}/update`, json(payload)),
+  approveEmail: (id: number, revision: number, actor: string) =>
+    request<CandidateEmailRow>(`/api/emails/${id}/approve`, json({ revision, actor })),
+  cancelEmail: (id: number, actor: string, reason: string) =>
+    request<CandidateEmailRow>(`/api/emails/${id}/cancel`, json({ actor, reason })),
+  sendEmail: (
+    id: number,
+    payload: { revision: number; content_hash: string; recipient: string; confirm: boolean; actor: string },
+  ) => request<EmailSendOutcome>(`/api/emails/${id}/send`, json(payload)),
+  commsStatus: () => request<CommsStatus>("/api/comms/status"),
 
   settings: () => request<SettingsData>("/api/settings"),
   updateAiSettings: (payload: Partial<AiSettings> & { api_key?: string; clear_api_key?: boolean }) =>

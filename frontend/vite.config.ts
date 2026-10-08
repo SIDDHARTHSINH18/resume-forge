@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-// Resume-Forge fixed dev ports (must not collide with ENMA/QResolve):
+// MeritOS fixed dev ports (must not collide with ENMA/QResolve):
 //   frontend dev: 127.0.0.1:5421  (override with FRONTEND_PORT)
 //   backend:      127.0.0.1:8421  (override with BACKEND_PORT)
 const frontendPort = Number(process.env.FRONTEND_PORT) || 5421;

@@ -10,6 +10,10 @@ Design rules:
   a dedicated test asserts scores are unaffected by it.
 - The output is a *recommendation* bucket from configurable thresholds, never
   an automatic hire/reject.
+- Required skills are guardrails, not averages: a missing required skill costs
+  points and caps the bucket at manual review. Nothing is ever auto-rejected,
+  and no behavioural/HR signal can lift a candidate over an unmet requirement —
+  HR history is advisory only and is never an input to this module.
 """
 
 from __future__ import annotations
@@ -36,6 +40,27 @@ GRADE_MODERATE = 0.75
 GRADE_LISTED = 0.6
 
 STRENGTH_GRADES = {"strong": GRADE_STRONG, "moderate": GRADE_MODERATE, "listed": GRADE_LISTED}
+
+# Job-requirement guardrails. A skill listed under "required" is treated as a
+# requirement, not as one more item in an average: it costs real points when
+# missing, and it caps the recommendation bucket so a candidate cannot be
+# presented as interview-ready while a stated requirement is absent. The cap
+# only ever moves a candidate *down to manual review* — it never rejects.
+MISSING_REQUIRED_PENALTY = 12.0
+WEAK_REQUIRED_PENALTY = 4.0
+GUARDRAIL_PENALTY_CAP = 30.0
+PREFERRED_BOOST = 2.5
+PREFERRED_BOOST_CAP = 10.0
+
+GUARDRAIL_REQUIRED_SKILL = "required_skill_missing"
+GUARDRAIL_WEAK_SKILL = "required_skill_weak"
+GUARDRAIL_EXPERIENCE = "experience_required_missing"
+
+GUARDRAIL_LABELS = {
+    GUARDRAIL_REQUIRED_SKILL: "Required skill missing",
+    GUARDRAIL_WEAK_SKILL: "Required skill weakly evidenced",
+    GUARDRAIL_EXPERIENCE: "Required experience missing",
+}
 
 STOPWORDS = {
     "the", "and", "for", "with", "intern", "internship", "job", "role", "work",
@@ -81,6 +106,15 @@ class ScoringResult:
     components: list[ComponentScore]
     missing_requirements: list[str]
     strengths: list[str]
+    # Job-requirement guardrails (see the constants above). ``guardrail_codes``
+    # is empty when nothing capped the recommendation; ``uncapped_recommendation``
+    # keeps the bucket the raw score alone would have produced, so the UI can
+    # state honestly that the score is high but a requirement is unmet.
+    guardrail_codes: list[str] = field(default_factory=list)
+    guardrail_detail: str = ""
+    missing_required_skills: list[str] = field(default_factory=list)
+    weak_required_skills: list[str] = field(default_factory=list)
+    uncapped_recommendation: str = ""
 
 
 def _profile_skill_grade(skill: str, facts: CandidateFacts) -> dict:
@@ -260,6 +294,21 @@ def _score_skills(profile: dict, facts: CandidateFacts) -> ComponentScore:
     else:
         base = 60.0  # no skills configured: neutral, and the evidence says so
 
+    base = round(max(0.0, min(100.0, base)), 1)
+
+    missing_required = [item for item in graded_required if item["grade"] == 0.0]
+    weak_required = [item for item in graded_required if 0.0 < item["grade"] < GRADE_STRONG]
+    penalty = min(
+        GUARDRAIL_PENALTY_CAP,
+        MISSING_REQUIRED_PENALTY * len(missing_required) + WEAK_REQUIRED_PENALTY * len(weak_required),
+    )
+    # Preferred skills only add value once the stated requirements are all present;
+    # otherwise "nice to have" would paper over a missing requirement.
+    boost = 0.0
+    if graded_required and not missing_required:
+        strong_preferred = [item for item in graded_preferred if item["grade"] >= GRADE_STRONG]
+        boost = min(PREFERRED_BOOST_CAP, PREFERRED_BOOST * len(strong_preferred))
+
     lines: list[str] = []
     for item in graded_required:
         lines.append(f"Required — {item['skill']}: {item['detail']}.")
@@ -267,13 +316,31 @@ def _score_skills(profile: dict, facts: CandidateFacts) -> ComponentScore:
         lines.append(f"Preferred — {item['skill']}: {item['detail']}.")
     if not lines:
         lines.append("No required or preferred skills configured in the screening profile.")
+    if missing_required:
+        names = ", ".join(item["skill"] for item in missing_required)
+        lines.append(
+            f"Requirement guardrail: {names} {'is' if len(missing_required) == 1 else 'are'} "
+            f"required by this profile and not found — {penalty:g} points deducted and the "
+            "recommendation is capped for manual review."
+        )
+    if weak_required:
+        names = ", ".join(item["skill"] for item in weak_required)
+        lines.append(
+            f"Requirement guardrail: {names} {'is' if len(weak_required) == 1 else 'are'} required "
+            f"but only weakly evidenced — {min(GUARDRAIL_PENALTY_CAP, WEAK_REQUIRED_PENALTY * len(weak_required)):g} "
+            "points deducted."
+        )
+    if boost:
+        lines.append(
+            f"Preferred-skill boost: +{boost:g} points for strongly evidenced preferred skills."
+        )
 
-    base = round(max(0.0, min(100.0, base)), 1)
+    adjusted = round(max(0.0, min(100.0, base - penalty + boost)), 1)
     return ComponentScore(
         component="skills",
-        score=base,
+        score=adjusted,
         weight=weight,
-        points=round(base * weight / 100.0, 2),
+        points=round(adjusted * weight / 100.0, 2),
         max_points=weight,
         evidence=" ".join(lines),
         details={
@@ -281,6 +348,11 @@ def _score_skills(profile: dict, facts: CandidateFacts) -> ComponentScore:
             "preferred": graded_preferred,
             "required_score": round(required_score, 1),
             "preferred_score": round(preferred_score, 1),
+            "base_score": base,
+            "missing_required": [item["skill"] for item in missing_required],
+            "weak_required": [item["skill"] for item in weak_required],
+            "penalty": round(penalty, 1),
+            "boost": round(boost, 1),
         },
     )
 
@@ -460,17 +532,71 @@ def score_candidate(profile: dict, facts: CandidateFacts) -> ScoringResult:
     overall = round(sum(component.points for component in components), 1)
     thresholds = profile["thresholds"]
     if overall >= float(thresholds["priority_review"]):
-        recommendation = RECOMMENDATION_PRIORITY
+        bucket = RECOMMENDATION_PRIORITY
     elif overall >= float(thresholds["interview_recommendation"]):
-        recommendation = RECOMMENDATION_INTERVIEW
+        bucket = RECOMMENDATION_INTERVIEW
     elif overall >= float(thresholds["manual_review"]):
-        recommendation = RECOMMENDATION_MANUAL
+        bucket = RECOMMENDATION_MANUAL
     else:
-        recommendation = RECOMMENDATION_NOT_MET
+        bucket = RECOMMENDATION_NOT_MET
+
+    skills_component = components[1]
+    experience_component = components[2]
+    missing_required = list(skills_component.details["missing_required"])
+    weak_required = list(skills_component.details["weak_required"])
+    strong_required = [
+        item["skill"] for item in skills_component.details["required"] if item["grade"] >= GRADE_STRONG
+    ]
+
+    codes: list[str] = []
+    if missing_required:
+        codes.append(GUARDRAIL_REQUIRED_SKILL)
+    elif weak_required:
+        codes.append(GUARDRAIL_WEAK_SKILL)
+    if profile.get("experience_requirement") == "required" and not experience_component.details.get(
+        "relevant"
+    ):
+        codes.append(GUARDRAIL_EXPERIENCE)
+
+    # A stated requirement outranks a high aggregate score: the recommendation is
+    # capped at manual review, and the reason is spelled out for the reviewer.
+    recommendation = bucket
+    if codes and bucket in (RECOMMENDATION_PRIORITY, RECOMMENDATION_INTERVIEW):
+        recommendation = RECOMMENDATION_MANUAL
+
+    detail_bits: list[str] = []
+    if missing_required:
+        lead = f"Strong {strong_required[0]}, but " if strong_required else "Required skill gap: "
+        names = ", ".join(missing_required)
+        # "not evidenced in the resume" — never "the candidate lacks this": an
+        # absence of evidence is not evidence of absence.
+        detail_bits.append(
+            f"{lead}{names} {'is' if len(missing_required) == 1 else 'are'} required for this role "
+            "and not evidenced in the resume."
+        )
+    if weak_required:
+        # ``weak_required`` mixes two different findings — "used but not listed"
+        # (moderate) and "listed without usage found" (listed). State each one as
+        # what it is; a blanket "listed without usage" would be wrong for the first.
+        phrases: list[str] = []
+        for item in skills_component.details["required"]:
+            if item["grade"] >= GRADE_STRONG or item["grade"] == 0.0:
+                continue
+            if item["grade"] >= GRADE_MODERATE:
+                phrases.append(f"{item['skill']} (used in the resume but not listed in a skills section)")
+            else:
+                phrases.append(f"{item['skill']} (listed, with no usage found in experience or projects)")
+        detail_bits.append(
+            f"{', '.join(phrases)} {'is' if len(weak_required) == 1 else 'are'} required but only "
+            "weakly evidenced."
+        )
+    if GUARDRAIL_EXPERIENCE in codes:
+        detail_bits.append(
+            "Experience is required by this profile but no relevant experience was found in the resume."
+        )
 
     missing: list[str] = []
     strengths: list[str] = []
-    skills_component = components[1]
     for item in skills_component.details["required"]:
         if not item["found"]:
             missing.append(f"Required skill not found: {item['skill']}")
@@ -501,4 +627,9 @@ def score_candidate(profile: dict, facts: CandidateFacts) -> ScoringResult:
         components=components,
         missing_requirements=missing,
         strengths=strengths,
+        guardrail_codes=codes,
+        guardrail_detail=" ".join(detail_bits),
+        missing_required_skills=missing_required,
+        weak_required_skills=weak_required,
+        uncapped_recommendation=bucket,
     )

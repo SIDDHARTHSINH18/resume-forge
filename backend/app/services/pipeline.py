@@ -13,6 +13,7 @@ import hashlib
 import logging
 import queue
 import threading
+import time
 from pathlib import Path
 
 from .. import similarity
@@ -198,21 +199,21 @@ class JobRunner:
         self.queue.put(job_id)
 
     def wait_idle(self, timeout: float = 120.0) -> bool:
-        """Test helper: block until every queued job has been processed."""
-        if self._thread is None:
-            return True
-        deadline = threading.Event()
-        # poll the queue emptiness plus thread liveness
-        import time
+        """Block until the worker has finished every job handed to it.
 
-        start = time.monotonic()
-        while time.monotonic() - start < timeout:
-            with self.queue.mutex:
-                empty = self.queue.unfinished_tasks == 0 and self.queue.empty()
-            if empty:
-                return True
-            deadline.wait(0.05)
-        return False
+        ``Queue.empty()``/``qsize()`` take the queue's own non-reentrant lock,
+        so they must never be called while that lock is held — doing so
+        deadlocks this thread and every worker waiting on the same lock.
+        ``unfinished_tasks`` is a plain counter, which is all this needs.
+        """
+        if self._thread is None or self._stop.is_set():
+            return True
+        deadline = time.monotonic() + timeout
+        while self.queue.unfinished_tasks > 0:
+            if time.monotonic() >= deadline:
+                return False
+            self._stop.wait(0.05)
+        return True
 
     def _loop(self) -> None:
         while not self._stop.is_set():

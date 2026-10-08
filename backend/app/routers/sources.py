@@ -6,7 +6,7 @@ with user-facing detail strings, application context on request.app.state.ctx.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,8 @@ from ..audit import record
 from ..sources import SourceError
 from ..sources import gmail as gmail_module
 from ..sources.base import SearchCriteria
+from ..services import source_records
+from ..services.pipeline import UploadError
 from ..sources.service import (
     instance_for,
     import_sync,
@@ -58,6 +60,30 @@ class GmailConfigPayload(BaseModel):
     clear_client_secret: bool = False
 
 
+class RecordPayload(BaseModel):
+    source_kind: str
+    title: str = ""
+    url: str = ""
+    notes: str = ""
+    contact_name: str = ""
+    contact_email: str = ""
+    referrer: str = ""
+    profile_id: int | None = None
+    created_by: str = ""
+
+
+class RecordStatusPayload(BaseModel):
+    status: str
+    actor: str = ""
+
+
+class PastePayload(BaseModel):
+    profile_id: int
+    text: str
+    label: str = ""
+    actor: str = ""
+
+
 def _profile_or_404(ctx, profile_id: int) -> dict:
     conn = ctx.connect()
     try:
@@ -82,6 +108,115 @@ def _source_or_404(ctx, source_id: int):
 def list_sources(request: Request):
     ctx = request.app.state.ctx
     return {"items": source_cards(ctx)}
+
+
+# --------------------------------------------------------------------------
+# manual intake — records, pasted text, CSV
+#
+# Declared before "/{source_id}" so these literal paths are not swallowed by
+# the numeric route. Everything here stores what a human supplied; nothing is
+# fetched from any website.
+# --------------------------------------------------------------------------
+
+
+@router.get("/records")
+def list_intake_records(
+    request: Request,
+    profile_id: int | None = None,
+    status: str | None = None,
+    kind: str | None = None,
+):
+    ctx = request.app.state.ctx
+    conn = ctx.connect()
+    try:
+        return {
+            "items": source_records.list_records(
+                conn, profile_id=profile_id, status=status, source_kind=kind
+            ),
+            "counts": source_records.record_counts(conn, profile_id=profile_id),
+            "kinds": source_records.RECORD_KIND_INFO,
+            "methods": source_records.INTAKE_METHODS,
+            "note": (
+                "Intake records are provenance: they say where a lead came from. A record only "
+                "becomes a candidate once its resume passes through the ingestion pipeline."
+            ),
+        }
+    finally:
+        conn.close()
+
+
+@router.post("/records", status_code=201)
+def create_intake_record(request: Request, payload: RecordPayload):
+    ctx = request.app.state.ctx
+    if payload.profile_id is not None:
+        _profile_or_404(ctx, payload.profile_id)
+    conn = ctx.connect()
+    try:
+        try:
+            return source_records.create_record(
+                conn,
+                source_kind=payload.source_kind,
+                profile_id=payload.profile_id,
+                title=payload.title,
+                url=payload.url,
+                notes=payload.notes,
+                contact_name=payload.contact_name,
+                contact_email=payload.contact_email,
+                referrer=payload.referrer,
+                created_by=payload.created_by,
+            )
+        except SourceError as exc:
+            raise HTTPException(status_code=400, detail=exc.reason) from exc
+    finally:
+        conn.close()
+
+
+@router.post("/records/{record_id}/status")
+def set_intake_record_status(request: Request, record_id: int, payload: RecordStatusPayload):
+    ctx = request.app.state.ctx
+    conn = ctx.connect()
+    try:
+        try:
+            return source_records.set_status(conn, record_id, payload.status, actor=payload.actor)
+        except SourceError as exc:
+            status = 404 if "not found" in exc.reason.lower() else 400
+            raise HTTPException(status_code=status, detail=exc.reason) from exc
+    finally:
+        conn.close()
+
+
+@router.post("/paste", status_code=202)
+def paste_resume(request: Request, payload: PastePayload):
+    ctx = request.app.state.ctx
+    profile = _profile_or_404(ctx, payload.profile_id)
+    try:
+        return source_records.import_pasted_text(
+            ctx, profile, text=payload.text, label=payload.label, actor=payload.actor
+        )
+    except (SourceError, UploadError) as exc:
+        raise HTTPException(status_code=400, detail=getattr(exc, "reason", str(exc))) from exc
+
+
+@router.post("/csv", status_code=202)
+async def import_csv_file(
+    request: Request,
+    profile_id: int = Form(...),
+    file: UploadFile = File(...),
+    actor: str = Form(""),
+):
+    ctx = request.app.state.ctx
+    profile = _profile_or_404(ctx, profile_id)
+    raw = await file.read(source_records.MAX_CSV_BYTES + 1)
+    if len(raw) > source_records.MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV file is larger than {source_records.MAX_CSV_BYTES // (1024 * 1024)} MB.",
+        )
+    filename = (file.filename or "candidates.csv").strip()
+    try:
+        return source_records.import_csv(ctx, profile, raw, filename, actor=actor)
+    except SourceError as exc:
+        raise HTTPException(status_code=400, detail=exc.reason) from exc
 
 
 @router.get("/{source_id}")
@@ -126,7 +261,7 @@ def gmail_oauth_callback(request: Request, code: str = "", state: str = "", erro
             conn,
             "source_connected",
             entity_type="resume_source",
-            message=f"Gmail connected as {gmail_module.mask_email(tokens.get('account')) or 'account'} (read-only scope)",
+            message=f"Gmail connected as {gmail_module.mask_email(tokens.get('account')) or 'account'} (read + approved-send scopes)",
             data={"scope": gmail_module.GMAIL_SCOPE},
         )
     finally:

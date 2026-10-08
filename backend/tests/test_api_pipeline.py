@@ -349,6 +349,67 @@ def test_job_progress_tracks_real_counts(env):
     assert finished["completed"] == 3
 
 
+def test_job_exposes_requirements_and_match_overview(env):
+    profile_id = create_profile(env.client)
+    result = upload_and_process(
+        env.client,
+        profile_id,
+        [
+            _txt("m1.txt", sample_resume_text("Match One", "match1@example.com")),
+            _txt("m2.txt", sample_resume_text("Match Two", "match2@example.com")),
+        ],
+    )
+    job = env.client.get(f"/api/jobs/{result['job_id']}").json()
+    assert job["requirements"]["required_skills"] == ["Python", "SQL", "Git"]
+    assert job["requirements"]["preferred_skills"] == ["React", "FastAPI", "AWS"]
+    assert job["requirements"]["experience_requirement"] == "preferred"
+    match = job["match"]
+    assert match["candidates"] == 2
+    assert match["priority"] + match["interview"] + match["manual"] + match["not_met"] == 2
+    assert match["decided"] == 0
+    assert match["avg_score"] is not None
+    # the sample resume covers every required skill
+    assert match["missing_required"] == 0
+
+    # the list endpoint carries the same summary
+    listing = env.client.get("/api/jobs").json()["items"]
+    listed = next(item for item in listing if item["id"] == result["job_id"])
+    assert listed["requirements"]["required_skills"] == job["requirements"]["required_skills"]
+    assert listed["match"]["candidates"] == 2
+
+
+def test_dashboard_recent_decisions_records_the_workflow(env):
+    profile_id = create_profile(env.client)
+    upload_and_process(
+        env.client,
+        profile_id,
+        [_txt("d1.txt", sample_resume_text("Decided One", "decided1@example.com"))],
+    )
+    candidate_id = env.client.get(f"/api/candidates?profile_id={profile_id}").json()["items"][0]["id"]
+    response = env.client.post(
+        f"/api/candidates/{candidate_id}/decision",
+        json={"decision": "shortlist", "reason": "Strong evidence", "author": "Local Reviewer"},
+    )
+    assert response.status_code in (200, 201), response.text
+
+    dashboard = env.client.get("/api/dashboard").json()
+    decisions = dashboard["recent_decisions"]
+    assert decisions, "the recorded decision must appear on the dashboard"
+    first = decisions[0]
+    assert first["id"] == candidate_id
+    assert first["decision"] == "shortlist"
+    assert first["decision_label"] == "Shortlisted"
+    assert first["decided_by"] == "Local Reviewer"
+    assert first["status"] == "SHORTLISTED"
+    assert first["is_demo"] is False
+
+    # the scope filter narrows the card: a real-only view must drop demo decisions
+    demo_only = env.client.get("/api/dashboard?data_scope=demo").json()
+    assert all(item["is_demo"] for item in demo_only["recent_decisions"])
+    real_only = env.client.get("/api/dashboard?data_scope=real").json()
+    assert any(item["id"] == candidate_id for item in real_only["recent_decisions"])
+
+
 def test_demo_status_and_generate(env):
     status = env.client.get("/api/demo/status").json()
     assert status["exists"] is False

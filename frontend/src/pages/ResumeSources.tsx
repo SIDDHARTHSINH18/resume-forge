@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api";
@@ -25,11 +25,16 @@ import {
   syncStatusLabel,
 } from "../format";
 import type {
+  CsvImportResult,
+  IntakeAvailability,
+  PasteImportResult,
   ResumeSourceCard,
   ScreeningProfile,
   SourceImportResult,
   SourceItemRow,
   SourcePreview,
+  SourceRecordRow,
+  SourceRecordsResponse,
   SourceSyncRow,
 } from "../types";
 
@@ -93,6 +98,7 @@ export function ResumeSourcesPage() {
         {!error && cards !== null && (
           <div style={{ display: "grid", gap: 18 }}>
             {manual && <ManualCard card={manual} />}
+            <IntakeLedgerCard profiles={profiles} />
             {gmail && (
               <GmailCard
                 card={gmail}
@@ -195,7 +201,8 @@ function ManualCard({ card }: { card: ResumeSourceCard }) {
       </div>
       <p className="field-hint">
         Manual uploads use the same ingestion pipeline as every other source — there is no separate
-        manual path.
+        manual path. On a profile you can also pick a whole folder: every resume inside it (including
+        subfolders) is queued in one batch, with non-resume files rejected with a reason.
       </p>
     </Card>
   );
@@ -209,8 +216,532 @@ function LinkedInCard({ card }: { card: ResumeSourceCard }) {
       </Notice>
       <p className="field-hint">
         An official connection can only be enabled when an approved API integration exists. Until
-        then this source stays unavailable and no data is fetched.
+        then this source stays unavailable and no data is fetched. Profile URLs can be stored
+        manually as references in the intake ledger above.
       </p>
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------- intake ledger */
+
+const AVAILABILITY_BADGES: Record<IntakeAvailability, { className: string; label: string }> = {
+  AVAILABLE: { className: "badge badge-success", label: "Available" },
+  MANUAL_ONLY: { className: "badge badge-warn", label: "Manual only" },
+  UNAVAILABLE: { className: "badge badge-neutral", label: "Not available" },
+  COMING_SOON: { className: "badge badge-outline", label: "Coming soon" },
+};
+
+const KIND_LABELS: Record<string, string> = {
+  referral: "Referral",
+  linkedin_profile: "LinkedIn profile",
+  company_page: "Company careers page",
+  job_board: "Job board listing",
+  csv_import: "CSV import",
+  pasted_text: "Pasted text",
+};
+
+const RECORD_STATUS_BADGES: Record<string, string> = {
+  RECORDED: "badge badge-accent",
+  SCREENED: "badge badge-success",
+  DISCARDED: "badge badge-neutral",
+};
+
+type IntakeMode = "record" | "paste" | "csv";
+
+function IntakeLedgerCard({ profiles }: { profiles: ScreeningProfile[] }) {
+  const toast = useToast();
+  const [data, setData] = useState<SourceRecordsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reviewer, setReviewer] = useState("");
+  const [mode, setMode] = useState<IntakeMode>("record");
+  const [busy, setBusy] = useState(false);
+  const [filterProfile, setFilterProfile] = useState(0);
+
+  // record form
+  const [kind, setKind] = useState("referral");
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [referrer, setReferrer] = useState("");
+  const [notes, setNotes] = useState("");
+  const [recordProfile, setRecordProfile] = useState(0);
+
+  // paste form
+  const [pasteProfile, setPasteProfile] = useState(0);
+  const [pasteLabel, setPasteLabel] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [pasteResult, setPasteResult] = useState<PasteImportResult | null>(null);
+
+  // csv form
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvProfile, setCsvProfile] = useState(0);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvResult, setCsvResult] = useState<CsvImportResult | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [records, settings] = await Promise.all([api.sourceRecords(), api.settings()]);
+      setData(records);
+      setReviewer(settings.reviewer.name || "");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load the intake ledger.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (recordProfile === 0 && profiles.length > 0) {
+      setRecordProfile(profiles[0].id);
+      setPasteProfile(profiles[0].id);
+      setCsvProfile(profiles[0].id);
+    }
+  }, [profiles, recordProfile]);
+
+  const submitRecord = async () => {
+    setBusy(true);
+    try {
+      await api.createSourceRecord({
+        source_kind: kind,
+        title: title.trim(),
+        url: url.trim(),
+        notes: notes.trim(),
+        contact_email: email.trim(),
+        referrer: referrer.trim(),
+        profile_id: recordProfile || null,
+        created_by: reviewer,
+      });
+      toast.success("Intake record added.");
+      setTitle("");
+      setUrl("");
+      setEmail("");
+      setReferrer("");
+      setNotes("");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add the record.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateStatus = async (record: SourceRecordRow, status: string) => {
+    try {
+      await api.sourceRecordStatus(record.id, status, reviewer);
+      toast.success(`Record #${record.id} marked ${status.toLowerCase()}.`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update the record.");
+    }
+  };
+
+  const submitPaste = async () => {
+    if (!pasteProfile) {
+      toast.error("Choose a screening profile first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.sourcePaste({
+        profile_id: pasteProfile,
+        text: pasteText,
+        label: pasteLabel.trim(),
+        actor: reviewer,
+      });
+      setPasteResult(result);
+      toast.success(result.message);
+      setPasteText("");
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to ingest the pasted text.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCsv = async () => {
+    if (!csvProfile || !csvFile) {
+      toast.error("Choose a screening profile and a CSV file first.");
+      return;
+    }
+    setBusy(true);
+    setCsvResult(null);
+    try {
+      const result = await api.sourceCsv(csvProfile, csvFile, reviewer);
+      setCsvResult(result);
+      toast.success(result.message);
+      setCsvFile(null);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "CSV import failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const kinds = data?.kinds ?? [];
+  const methods = data?.methods ?? [];
+  const selectedKind = kinds.find((item) => item.kind === kind);
+  const records = (data?.items ?? []).filter(
+    (record) => filterProfile === 0 || record.profile_id === filterProfile,
+  );
+
+  return (
+    <Card
+      title={
+        <div className="row between wrap" style={{ gap: 10 }}>
+          <span className="row wrap" style={{ gap: 10 }}>
+            <span className="card-title" style={{ margin: 0 }}>
+              Manual intake — leads, links, CSV and pasted resumes
+            </span>
+            <span className="badge badge-outline">
+              <Icon name="clipboard" size={12} />
+              Provenance ledger
+            </span>
+          </span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
+            <Icon name="refresh" size={13} />
+            Refresh
+          </button>
+        </div>
+      }
+    >
+      <Notice kind="neutral" icon="shield">
+        MeritOS does not scrape websites and does not store LinkedIn or job-board credentials. Leads
+        you record here are references only; a resume still has to be uploaded, pasted or carried in
+        the CSV before anything enters screening.
+      </Notice>
+
+      {error && <p className="field-hint" style={{ color: "var(--danger)" }}>{error}</p>}
+
+      {methods.length > 0 && (
+        <>
+          <div className="section-title mt-3">Intake methods in this build</div>
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            Every label below reflects what actually works in this installation — nothing is
+            advertised as connected when it is not.
+          </p>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {methods.map((method) => {
+              const badge = AVAILABILITY_BADGES[method.availability] ?? AVAILABILITY_BADGES.UNAVAILABLE;
+              return (
+                <span key={method.key} className={badge.className} title={method.note}>
+                  {method.label} — {badge.label}
+                </span>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <div className="segmented mt-3" role="group" aria-label="Manual intake action">
+        <button type="button" className={mode === "record" ? "on" : ""} aria-pressed={mode === "record"} onClick={() => setMode("record")}>
+          Record a lead
+        </button>
+        <button type="button" className={mode === "paste" ? "on" : ""} aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>
+          Paste resume text
+        </button>
+        <button type="button" className={mode === "csv" ? "on" : ""} aria-pressed={mode === "csv"} onClick={() => setMode("csv")}>
+          Import a CSV
+        </button>
+      </div>
+
+      {mode === "record" && (
+        <div className="mt-3">
+          <div className="field-row field-row-3">
+            <div className="field">
+              <label className="field-label" htmlFor="record-kind">Lead type</label>
+              <select id="record-kind" className="select" value={kind} onChange={(event) => setKind(event.target.value)}>
+                {kinds.map((item) => (
+                  <option key={item.kind} value={item.kind}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="record-title">Name or title</label>
+              <input id="record-title" className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Ravi Kumar" />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="record-email">Contact email (optional)</label>
+              <input id="record-email" className="input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" autoComplete="off" />
+            </div>
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label className="field-label" htmlFor="record-url">Reference URL (optional)</label>
+              <input id="record-url" className="input" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" autoComplete="off" />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="record-referrer">Referrer (optional)</label>
+              <input id="record-referrer" className="input" value={referrer} onChange={(event) => setReferrer(event.target.value)} placeholder="Who referred them" autoComplete="off" />
+            </div>
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label className="field-label" htmlFor="record-profile">Screening profile (optional)</label>
+              <select id="record-profile" className="select" value={recordProfile} onChange={(event) => setRecordProfile(Number(event.target.value))}>
+                <option value={0}>No specific profile</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.title}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="record-notes">Notes (optional)</label>
+              <input id="record-notes" className="input" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for the reviewer" />
+            </div>
+          </div>
+          {selectedKind && <p className="field-hint">{selectedKind.description}</p>}
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-secondary" onClick={() => void submitRecord()} disabled={busy}>
+              {busy ? <span className="spinner" /> : <Icon name="clipboard" size={14} />}
+              {busy ? "Saving…" : "Add to ledger"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === "paste" && (
+        <div className="mt-3">
+          <div className="field-row">
+            <div className="field">
+              <label className="field-label" htmlFor="paste-profile">Screening profile</label>
+              <select id="paste-profile" className="select" value={pasteProfile} onChange={(event) => setPasteProfile(Number(event.target.value))}>
+                <option value={0}>Choose a profile…</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.title}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="paste-label">Label (optional)</label>
+              <input id="paste-label" className="input" value={pasteLabel} onChange={(event) => setPasteLabel(event.target.value)} placeholder="e.g. Kabir Shah" />
+            </div>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="paste-text">Resume text</label>
+            <textarea
+              id="paste-text"
+              className="textarea"
+              rows={8}
+              value={pasteText}
+              onChange={(event) => setPasteText(event.target.value)}
+              placeholder="Paste the resume text here. It is stored as a .txt file and runs through the same parsing, scoring and duplicate checks as an uploaded file."
+            />
+          </div>
+          <p className="field-hint">
+            At least 40 characters. The text becomes a regular resume in the chosen profile — nothing
+            is auto-decisioned.
+          </p>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-primary" onClick={() => void submitPaste()} disabled={busy || !pasteProfile || pasteText.trim().length < 40}>
+              {busy ? <span className="spinner on-accent" /> : <Icon name="note" size={14} />}
+              {busy ? "Queueing…" : "Ingest pasted text"}
+            </button>
+          </div>
+          {pasteResult && (
+            <div className="outcome mt-2" role="status">
+              <Icon name="check" size={15} />
+              <div>
+                <strong>{pasteResult.message}</strong> Queued as <span className="mono">{pasteResult.filename}</span>{" "}
+                — track it in <Link to="/processing">Processing</Link>.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "csv" && (
+        <div className="mt-3">
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            UTF-8 CSV, up to 500 rows and 2 MB. A <span className="mono">name</span> or{" "}
+            <span className="mono">email</span> column is required. Optional columns:{" "}
+            <span className="mono">url</span>, <span className="mono">notes</span>,{" "}
+            <span className="mono">referrer</span>, <span className="mono">phone</span>,{" "}
+            <span className="mono">source</span> and <span className="mono">resume_text</span>. Rows
+            with resume text are queued for processing; every other row becomes an intake record.
+          </p>
+          <div className="field-row">
+            <div className="field">
+              <label className="field-label" htmlFor="csv-profile">Screening profile</label>
+              <select id="csv-profile" className="select" value={csvProfile} onChange={(event) => setCsvProfile(Number(event.target.value))}>
+                <option value={0}>Choose a profile…</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.title}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="csv-file">CSV file</label>
+              <input
+                ref={csvInputRef}
+                id="csv-file"
+                type="file"
+                accept=".csv,text/csv"
+                className="input"
+                onChange={(event) => setCsvFile(event.target.files?.[0] ?? null)}
+              />
+            </div>
+          </div>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn btn-primary" onClick={() => void submitCsv()} disabled={busy || !csvProfile || !csvFile}>
+              {busy ? <span className="spinner on-accent" /> : <Icon name="download" size={14} />}
+              {busy ? "Importing…" : "Import CSV"}
+            </button>
+          </div>
+          {csvResult && (
+            <div className="mt-2">
+              <div className="stat-grid">
+                <Stat label="Data rows" value={csvResult.total_rows} />
+                <Stat label="Records added" value={csvResult.records_created} tone="accent" />
+                <Stat label="Resumes queued" value={csvResult.resumes_queued} />
+                <Stat label="Duplicates skipped" value={csvResult.records_skipped_duplicates} tone="warn" />
+                <Stat label="Rows rejected" value={csvResult.invalid_rows.length} tone={csvResult.invalid_rows.length > 0 ? "warn" : undefined} />
+              </div>
+              {csvResult.job_id !== null && (
+                <p className="field-hint">
+                  Resume text rows are processing — <Link to="/processing">track job #{csvResult.job_id}</Link>.
+                </p>
+              )}
+              {csvResult.unrecognised_columns.length > 0 && (
+                <p className="field-hint">
+                  Ignored columns: <span className="mono">{csvResult.unrecognised_columns.join(", ")}</span>.
+                </p>
+              )}
+              {csvResult.invalid_rows.length > 0 && (
+                <div className="error-box mt-1">
+                  <Icon name="alert" size={15} />
+                  <div>
+                    {csvResult.invalid_rows.slice(0, 8).map((row, index) => (
+                      <div key={index}>
+                        {row.row !== null ? <>Row {row.row}: </> : null}
+                        {row.reason}
+                      </div>
+                    ))}
+                    {csvResult.invalid_rows.length > 8 && (
+                      <div className="faint">…and {csvResult.invalid_rows.length - 8} more.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <p className="field-hint">{csvResult.note}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="row between wrap mt-3" style={{ gap: 10 }}>
+        <div className="section-title" style={{ margin: 0 }}>Ledger</div>
+        <div className="row" style={{ gap: 8 }}>
+          <select
+            className="select"
+            aria-label="Filter ledger by profile"
+            value={filterProfile}
+            onChange={(event) => setFilterProfile(Number(event.target.value))}
+            style={{ width: 220 }}
+          >
+            <option value={0}>All profiles</option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.title}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {data && (
+        <div className="stat-grid mt-1">
+          <Stat label="Recorded" value={data.counts.RECORDED} />
+          <Stat label="Screened" value={data.counts.SCREENED} />
+          <Stat label="Discarded" value={data.counts.DISCARDED} />
+          <Stat label="Total" value={data.counts.total} />
+        </div>
+      )}
+
+      {data === null && !error && <LoadingLine text="Loading the intake ledger…" />}
+      {data !== null && records.length === 0 && (
+        <p className="field-hint">
+          {data.counts.total === 0
+            ? "No intake records yet. Referrals, LinkedIn URLs, careers-page links and CSV leads land here with their provenance."
+            : "No records match the selected profile."}
+        </p>
+      )}
+      {records.length > 0 && (
+        <div className="table-wrap mt-1">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Added</th>
+                <th>Lead</th>
+                <th>Source</th>
+                <th>Profile</th>
+                <th>Status</th>
+                <th>Resume / candidate</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((record) => (
+                <tr key={record.id}>
+                  <td className="small nowrap">
+                    {formatRelative(record.created_at)}
+                    {record.created_by && <div className="cell-sub faint">by {record.created_by}</div>}
+                  </td>
+                  <td className="small">
+                    <div className="cell-main">{record.title || record.contact_name || "—"}</div>
+                    <div className="cell-sub faint">
+                      {record.contact_email || record.url
+                        ? record.contact_email || <span className="mono">{record.url}</span>
+                        : record.referrer
+                          ? `Referrer: ${record.referrer}`
+                          : "—"}
+                    </div>
+                    {record.notes && <div className="cell-sub faint">{record.notes}</div>}
+                  </td>
+                  <td className="small nowrap">
+                    <span className="badge badge-outline">{KIND_LABELS[record.source_kind] ?? record.source_kind}</span>
+                  </td>
+                  <td className="small">{record.profile_title ?? "—"}</td>
+                  <td>
+                    <span className={RECORD_STATUS_BADGES[record.status] ?? "badge badge-neutral"}>
+                      {record.status_label}
+                    </span>
+                  </td>
+                  <td className="small">
+                    {record.candidate_id !== null ? (
+                      <Link to={`/candidates/${record.candidate_id}`}>{record.candidate_name || `Candidate #${record.candidate_id}`}</Link>
+                    ) : (
+                      <span className="faint">Not in the pipeline yet</span>
+                    )}
+                    {record.resume_filename && <div className="cell-sub faint mono">{record.resume_filename}</div>}
+                  </td>
+                  <td className="small nowrap">
+                    <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                      {record.status !== "SCREENED" && (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => void updateStatus(record, "SCREENED")}>
+                          Mark screened
+                        </button>
+                      )}
+                      {record.status !== "DISCARDED" ? (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void updateStatus(record, "DISCARDED")}>
+                          Discard
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void updateStatus(record, "RECORDED")}>
+                          Restore
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Card>
   );
 }
@@ -283,7 +814,9 @@ function GmailCard({
     try {
       const result = await api.sourceConnect(card.id);
       window.open(result.auth_url, "_blank", "noopener");
-      toast.info("Google sign-in opened in a new tab. Approve read-only access, then refresh this page.");
+      toast.info(
+        "Google sign-in opened in a new tab. Approve read access and candidate-email sending (only emails you explicitly approve and confirm), then refresh this page.",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start the Gmail connection.");
     } finally {
@@ -309,9 +842,10 @@ function GmailCard({
   return (
     <Card title={<SourceCardHeader card={card} />}>
       <Notice kind="neutral" icon="shield">
-        Uses the official Gmail API with OAuth 2.0 and read-only access. No Google password is ever
-        requested or stored, and no browser scraping is used. Tokens are kept in this machine's local
-        config file (plaintext, like the AI provider keys) and never written to audit logs.
+        Uses the official Gmail API with OAuth 2.0: read-only access for intake, plus the send scope used
+        only for candidate emails you explicitly approve and confirm — never automatically. Google
+        credentials are never requested or stored, no browser scraping is used, and tokens stay in this
+        machine's local config file (plaintext, like the AI provider keys) — never in audit logs.
       </Notice>
       <p className="muted mt-1">{card.message}</p>
       {card.detail && <p className="field-hint">{card.detail}</p>}
@@ -319,6 +853,24 @@ function GmailCard({
       {!card.configured && (
         <div className="mt-3">
           <div className="section-title">Setup required — Google Cloud OAuth client</div>
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            Gmail OAuth is not configured yet. Create a Google Cloud OAuth client (Web application)
+            with the credentials below, then paste them here or provide them via your environment
+            (<span className="mono">GOOGLE_CLIENT_ID</span>,{" "}
+            <span className="mono">GOOGLE_CLIENT_SECRET</span>).
+          </p>
+          <ul className="cred-list">
+            <li>
+              <span className="cred-key">GOOGLE_CLIENT_ID</span> from Google Cloud Console → Credentials
+            </li>
+            <li>
+              <span className="cred-key">GOOGLE_CLIENT_SECRET</span> stored server-side, never shown again
+            </li>
+            <li>
+              <span className="cred-key">Authorized redirect URI</span>
+              <span className="mono small">http://127.0.0.1:8421/api/sources/gmail/oauth/callback</span>
+            </li>
+          </ul>
           <div className="field-row field-row-3">
             <div className="field">
               <label className="field-label" htmlFor="gmail-client-id">

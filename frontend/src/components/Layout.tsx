@@ -2,17 +2,30 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { api } from "../api";
+import { CommandBar } from "./CommandBar";
 import { Icon, type IconName } from "./Icon";
 
-const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
-  { to: "/", label: "Dashboard", icon: "dashboard", end: true },
-  { to: "/profiles", label: "Screening Profiles", icon: "profiles" },
-  { to: "/candidates", label: "Candidates", icon: "candidates" },
-  { to: "/sources", label: "Resume Sources", icon: "download" },
-  { to: "/processing", label: "Processing", icon: "processing" },
-  { to: "/reviews", label: "Reviews", icon: "reviews" },
-  { to: "/exports", label: "Exports", icon: "exports" },
-  { to: "/settings", label: "Settings", icon: "settings" },
+const NAV: { section?: string; items: { to: string; label: string; icon: IconName; end?: boolean }[] }[] = [
+  {
+    items: [{ to: "/", label: "Dashboard", icon: "dashboard", end: true }],
+  },
+  {
+    section: "Hiring",
+    items: [
+      { to: "/candidates", label: "Candidates", icon: "candidates" },
+      { to: "/processing", label: "Jobs", icon: "processing" },
+      { to: "/reviews", label: "Reviews", icon: "reviews" },
+    ],
+  },
+  {
+    section: "Setup",
+    items: [
+      { to: "/profiles", label: "Profiles", icon: "profiles" },
+      { to: "/sources", label: "Sources", icon: "download" },
+      { to: "/library", label: "Library", icon: "file" },
+      { to: "/settings", label: "Settings", icon: "settings" },
+    ],
+  },
 ];
 
 export function PageHeader({
@@ -25,7 +38,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="topbar">
+    <header className="page-header">
       <div>
         <h1>{title}</h1>
         {subtitle && <div className="topbar-sub">{subtitle}</div>}
@@ -66,48 +79,46 @@ export function Layout() {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">
-            <Icon name="funnel" size={16} />
-          </span>
-          <span className="brand-text">
-            <span className="brand-name">Resume-Forge</span>
-            <br />
-            <span className="brand-sub">AI SCREENING CONSOLE</span>
-          </span>
-        </div>
-        <nav className="nav" aria-label="Main navigation">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={item.label}
-              aria-label={item.label}
-              className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-            >
-              <Icon name={item.icon} size={16} />
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-foot">
-          <div className="user-chip">
-            <span className="avatar">{initials || "LR"}</span>
-            <span className="user-text">
-              <span className="user-name" style={{ display: "block" }}>
-                {reviewer}
+      <CommandBar reviewer={reviewer} />
+      <div className="app-body">
+        <aside className="sidebar">
+          <nav className="nav" aria-label="Main navigation">
+            {NAV.map((group, index) => (
+              <div key={index} style={{ display: "contents" }}>
+                {group.section && <div className="nav-section">{group.section}</div>}
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    title={item.label}
+                    aria-label={item.label}
+                    className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                  >
+                    <Icon name={item.icon} size={16} />
+                    <span className="nav-label">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+          <div className="sidebar-foot">
+            <div className="user-chip">
+              <span className="avatar">{initials || "LR"}</span>
+              <span className="user-text">
+                <span className="user-name" style={{ display: "block" }}>
+                  {reviewer}
+                </span>
+                <span className="user-role">Human reviewer</span>
               </span>
-              <span className="user-role">Human reviewer</span>
-            </span>
+            </div>
+            <p className="local-note">Local-first. Resumes and decisions stay on this machine.</p>
           </div>
-          <p className="local-note">Local-first. Resumes and decisions stay on this machine.</p>
-        </div>
-      </aside>
-      <main className="main" id="main-content" tabIndex={-1}>
-        <Outlet />
-      </main>
+        </aside>
+        <main className="main" id="main-content" tabIndex={-1}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

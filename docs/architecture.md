@@ -1,4 +1,4 @@
-# ResumeForge architecture
+# MeritOS architecture
 
 This document describes the current system boundaries. It is intentionally smaller than a full design specification.
 

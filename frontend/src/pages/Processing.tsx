@@ -5,8 +5,77 @@ import { api } from "../api";
 import { PageHeader } from "../components/Layout";
 import { Card, EmptyState, ErrorState, LoadingLine, Progress, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { formatRelative, jobStatusBadge, jobStatusLabel, resumeStatusLabel } from "../format";
+import {
+  formatRelative,
+  jobStatusBadge,
+  jobStatusLabel,
+  requirementLabel,
+  resumeStatusLabel,
+} from "../format";
 import type { Job, JobResume } from "../types";
+
+function JobRequirements({ job }: { job: Job }) {
+  const { required_skills, preferred_skills, experience_requirement } = job.requirements;
+  const { match } = job;
+  return (
+    <div className="mt-2" style={{ display: "grid", gap: 6 }}>
+      <div className="row wrap" style={{ gap: 14 }}>
+        <span className="row wrap" style={{ gap: 5 }}>
+          <span className="faint small">Required</span>
+          {required_skills.length === 0 ? (
+            <span className="faint small">none configured</span>
+          ) : (
+            required_skills.map((skill) => (
+              <span className="chip" key={skill}>
+                {skill}
+              </span>
+            ))
+          )}
+        </span>
+        <span className="row wrap" style={{ gap: 5 }}>
+          <span className="faint small">Preferred</span>
+          {preferred_skills.length === 0 ? (
+            <span className="faint small">none configured</span>
+          ) : (
+            preferred_skills.map((skill) => (
+              <span className="chip" key={skill}>
+                {skill}
+              </span>
+            ))
+          )}
+        </span>
+        <span className="faint small">
+          Experience: <strong>{requirementLabel(experience_requirement)}</strong>
+        </span>
+      </div>
+      {match.candidates === 0 ? (
+        <p className="field-hint" style={{ margin: 0 }}>
+          No candidates screened from this batch yet — match counts appear here as resumes finish
+          processing.
+        </p>
+      ) : (
+        <div className="row wrap" style={{ gap: 12 }}>
+          <span className="faint small num">
+            {match.candidates} candidate{match.candidates === 1 ? "" : "s"} screened · {match.priority}{" "}
+            priority · {match.interview} interview rec. · {match.manual} manual review · {match.not_met}{" "}
+            below bar · avg score {match.avg_score !== null ? match.avg_score.toFixed(1) : "—"}
+          </span>
+          {match.missing_required > 0 ? (
+            <span className="small num" style={{ color: "var(--warn)" }}>
+              <strong>{match.missing_required}</strong> candidate{match.missing_required === 1 ? "" : "s"}{" "}
+              missing a required skill
+            </span>
+          ) : (
+            <span className="faint small">All screened candidates cover the required skills</span>
+          )}
+          <span className="faint small num">
+            {match.decided} human decision{match.decided === 1 ? "" : "s"} recorded
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ProcessingPage() {
   const toast = useToast();
@@ -138,6 +207,7 @@ export function ProcessingPage() {
                       </>
                     }
                   />
+                  <JobRequirements job={job} />
                   {job.status === "COMPLETED_WITH_ERRORS" && job.failed > 0 && (
                     <p className="field-hint">
                       Completed with {job.failed} failure{job.failed === 1 ? "" : "s"} — see failed

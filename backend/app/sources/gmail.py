@@ -1,7 +1,10 @@
-"""Gmail connector — official Gmail API via OAuth 2.0 (read-only).
+"""Gmail connector — official Gmail API via OAuth 2.0.
 
 Security model:
-- OAuth 2.0 authorization-code flow with PKCE; scope is gmail.readonly only.
+- OAuth 2.0 authorization-code flow with PKCE; scopes are gmail.readonly for
+  resume intake plus gmail.send, which the communication service uses *only*
+  for emails a reviewer explicitly approved and confirmed. Nothing is ever
+  sent automatically.
 - The connector never sees or stores a Google password.
 - Client credentials and tokens live in the local config file (backend/data/
   config.json), the same local credential store the AI provider keys use.
@@ -39,7 +42,12 @@ from .base import (
     day_after,
 )
 
-GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+# One consent covers both: intake reads, and the communication service sends
+# only explicitly approved emails. Status copy and docs must stay consistent
+# with this split.
+GMAIL_SCOPE = f"{GMAIL_READ_SCOPE} {GMAIL_SEND_SCOPE}"
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 API_BASE = "https://gmail.googleapis.com/gmail/v1"
@@ -59,6 +67,25 @@ GMAIL_MESSAGES = (
     "Gmail session expired or was revoked. Reconnect the account.",
     "Unable to reach Gmail. No resumes were imported.",
 )
+
+GMAIL_SEND_PERMISSION_MESSAGE = (
+    "The Gmail connection does not grant sending permission. "
+    "Reconnect the Gmail account and approve the send scope to enable candidate emails."
+)
+
+
+class GmailSendError(Exception):
+    """A send attempt failed.
+
+    `uncertain` is True when the provider never gave a definitive answer
+    (timeout, connection drop, 5xx): the message may or may not have been
+    accepted, so it must not be silently retried.
+    """
+
+    def __init__(self, reason: str, *, uncertain: bool = False):
+        super().__init__(reason)
+        self.reason = reason
+        self.uncertain = uncertain
 
 
 # --------------------------------------------------------------------------
@@ -125,22 +152,46 @@ def mask_secret(value: str | None) -> str | None:
     return f"{value[:4]}…{value[-4:]}"
 
 
-def get_client_config(ctx) -> dict:
+def _env_first(*names: str) -> str:
+    """Return the first non-empty environment value among `names`."""
     import os
 
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return ""
+
+
+def get_client_config(ctx) -> dict:
     stored = (ctx.read_config() or {}).get(CONFIG_KEY, {}) or {}
-    client_id = os.environ.get("AILISTER_GMAIL_CLIENT_ID") or stored.get("client_id") or ""
-    client_secret = os.environ.get("AILISTER_GMAIL_CLIENT_SECRET") or stored.get("client_secret") or ""
+    # AILISTER_GMAIL_* is the canonical prefix (matches AILISTER_AI_*);
+    # GOOGLE_CLIENT_ID / _SECRET / _REDIRECT_URI are accepted aliases so
+    # operators can reuse standard Google OAuth naming without editing
+    # this file — the UI hint in Sources.tsx references the alias names.
+    client_id = _env_first("AILISTER_GMAIL_CLIENT_ID", "GOOGLE_CLIENT_ID") or stored.get("client_id") or ""
+    client_secret = (
+        _env_first("AILISTER_GMAIL_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET")
+        or stored.get("client_secret")
+        or ""
+    )
     redirect_uri = (
-        os.environ.get("AILISTER_GMAIL_REDIRECT_URI")
+        _env_first("AILISTER_GMAIL_REDIRECT_URI", "GOOGLE_REDIRECT_URI")
         or stored.get("redirect_uri")
         or DEFAULT_REDIRECT_URI
+    )
+    secret_from_env = bool(
+        _env_first("AILISTER_GMAIL_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET")
     )
     return {
         "client_id": client_id,
         "client_secret": client_secret,
         "redirect_uri": redirect_uri,
-        "secret_source": "environment" if os.environ.get("AILISTER_GMAIL_CLIENT_SECRET") else ("config file" if stored.get("client_secret") else "none"),
+        "secret_source": (
+            "environment"
+            if secret_from_env
+            else ("config file" if stored.get("client_secret") else "none")
+        ),
     }
 
 
@@ -326,6 +377,38 @@ class GmailApi:
         except SourceError:
             return None
 
+    def send_raw(self, raw: bytes) -> dict:
+        """Send a fully-formed RFC 2822 message. Raises GmailSendError.
+
+        Status semantics: 4xx means the provider definitively rejected the
+        message; timeouts, transport errors and 5xx are ambiguous — the
+        message may or may not have been accepted.
+        """
+        payload = {"raw": base64.urlsafe_b64encode(raw).decode("ascii")}
+        try:
+            response = self._client.post(
+                "/users/me/messages/send",
+                json=payload,
+                headers={"Authorization": f"Bearer {self.access_token}"},
+            )
+        except httpx.HTTPError:
+            raise GmailSendError(
+                "No definitive answer from Gmail (connection problem). The email may or may not have been sent.",
+                uncertain=True,
+            )
+        if response.status_code == 401:
+            raise GmailSendError(GMAIL_MESSAGES[0])
+        if response.status_code == 403:
+            raise GmailSendError(GMAIL_SEND_PERMISSION_MESSAGE)
+        if response.status_code >= 500:
+            raise GmailSendError(
+                "Gmail reported a server error. The email may or may not have been sent.",
+                uncertain=True,
+            )
+        if response.status_code >= 400:
+            raise GmailSendError(f"Gmail rejected the message (HTTP {response.status_code}). Nothing was sent.")
+        return response.json()
+
 
 def extract_headers(message: dict) -> tuple[str, str, str]:
     headers = {
@@ -472,7 +555,11 @@ class GmailSource(ResumeSource):
             return SourceStatus(
                 state="NOT_CONNECTED",
                 message="Add your Google Cloud OAuth client (client ID and secret) to connect Gmail.",
-                detail="Uses the official Gmail API with read-only access. No Google password is ever stored.",
+                detail=(
+                    "Uses the official Gmail API with OAuth 2.0. Intake reads with read-only access; "
+                    "sending is only used for candidate emails you explicitly approve and confirm. "
+                    "No Google password is ever requested or stored."
+                ),
             )
         if not tokens:
             return SourceStatus(

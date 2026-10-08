@@ -11,6 +11,7 @@ import {
   sourceImportFixture,
   sourceItemFixture,
   sourcePreviewFixture,
+  sourceRecordsFixture,
   sourceSyncFixture,
 } from "./mockApi";
 import { renderApp } from "./renderApp";
@@ -40,7 +41,8 @@ function sourceCards() {
       configured: false,
       is_test_source: false,
       message: "Add your Google Cloud OAuth client (client ID and secret) to connect Gmail.",
-      detail: "Uses the official Gmail API with read-only access. No Google password is ever stored.",
+      detail:
+        "Uses the official Gmail API with OAuth 2.0. Intake reads with read-only access; sending is only used for candidate emails you explicitly approve and confirm. No Google password is ever requested or stored.",
     }),
     sourceCardFixture(),
     sourceCardFixture({
@@ -77,6 +79,7 @@ function installMock(overrides: { cards?: unknown; preview?: unknown; importResu
       });
     }
     if (url === "/api/sources") return res(200, { items: overrides.cards ?? sourceCards() });
+    if (url.startsWith("/api/sources/records")) return res(200, sourceRecordsFixture());
     return undefined;
   });
 }

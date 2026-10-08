@@ -172,6 +172,19 @@ export function jobStatusLabel(status: string): string {
   }
 }
 
+export function requirementLabel(level: string | null | undefined): string {
+  switch (level) {
+    case "required":
+      return "Required";
+    case "preferred":
+      return "Preferred";
+    case "not_required":
+      return "Not required";
+    default:
+      return "—";
+  }
+}
+
 export function sourceStateBadge(state: string): string {
   switch (state) {
     case "CONNECTED":

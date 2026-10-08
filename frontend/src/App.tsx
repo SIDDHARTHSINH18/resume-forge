@@ -5,6 +5,7 @@ import { CandidateDetailPage } from "./pages/CandidateDetail";
 import { CandidatesPage } from "./pages/Candidates";
 import { DashboardPage } from "./pages/Dashboard";
 import { ExportsPage } from "./pages/Exports";
+import { LibraryPage } from "./pages/Library";
 import { ProcessingPage } from "./pages/Processing";
 import { ProfileDetailPage } from "./pages/ProfileDetail";
 import { ProfileFormPage } from "./pages/ProfileForm";
@@ -39,6 +40,7 @@ export function App() {
         <Route path="/candidates" element={<CandidatesPage />} />
         <Route path="/candidates/:id" element={<CandidateDetailPage />} />
         <Route path="/sources" element={<ResumeSourcesPage />} />
+        <Route path="/library" element={<LibraryPage />} />
         <Route path="/processing" element={<ProcessingPage />} />
         <Route path="/reviews" element={<ReviewsPage />} />
         <Route path="/exports" element={<ExportsPage />} />

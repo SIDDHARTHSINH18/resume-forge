@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 LIST_PARAM_KEYS = (
     "profile_id", "search", "degree", "skill", "recommendation", "status",
     "resume_status", "min_academic", "max_academic", "academic_type", "experience",
-    "duplicates_only", "sort", "order", "page", "page_size",
+    "duplicates_only", "data_scope", "date_range", "sort", "order", "page", "page_size",
 )
 
 

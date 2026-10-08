@@ -2,16 +2,34 @@ import { vi } from "vitest";
 
 import type {
   CandidateDetail,
+  CandidateEmailRow,
+  CandidateEmailsResponse,
+  CandidateExplanation,
   CandidateListItem,
+  CommsStatus,
+  CsvImportResult,
   DashboardData,
+  DecisionMemoryRow,
+  DemoClearResult,
+  DemoResetResult,
+  DemoSeedResult,
+  DemoStatus,
+  DemoWorkspaceOverview,
+  EmailSendLogRow,
+  EmailSendOutcome,
   Job,
   JobResume,
+  PasteImportResult,
+  ProfileInsights,
+  RecentDecision,
   ResumeSourceCard,
   ScreeningProfile,
   SettingsData,
   SourceImportResult,
   SourceItemRow,
   SourcePreview,
+  SourceRecordRow,
+  SourceRecordsResponse,
   SourceSyncRow,
 } from "../types";
 
@@ -335,6 +353,70 @@ export function candidateDetailFixture(overrides: Partial<CandidateDetail> = {})
   };
 }
 
+export function explanationFixture(overrides: Partial<CandidateExplanation> = {}): CandidateExplanation {
+  return {
+    headline: "Strong on Python, but SQL is required — so this stays shortlist / manual review.",
+    matched_required: [{ skill: "Python", detail: "listed in the resume and used in Experience section" }],
+    missing_required: ["SQL"],
+    weak_required: [],
+    matched_preferred: [{ skill: "Git", detail: "listed under skills, no usage found in experience or projects" }],
+    guardrail: {
+      codes: ["required_skill_missing"],
+      detail: "Strong Python, but SQL is required for this role and not evidenced in the resume.",
+      capped: true,
+    },
+    hr_pattern: null,
+    warnings: [
+      "Do not auto-shortlist: SQL is required by this role and not evidenced in the resume.",
+    ],
+    confidence: "low",
+    score: 78,
+    recommendation: "MANUAL_REVIEW",
+    advisory_only:
+      "MeritOS explains; a reviewer decides. Nothing here sends an email, changes a status or rejects a candidate.",
+    ...overrides,
+  };
+}
+
+export function decisionMemoryFixture(overrides: Partial<DecisionMemoryRow> = {}): DecisionMemoryRow {
+  return {
+    id: 1,
+    candidate_id: 11,
+    profile_id: 1,
+    decision: "shortlist",
+    previous_decision: null,
+    reason: "Strong Python evidence; SQL demonstrated in the internship",
+    matched_required: ["Python", "SQL"],
+    missing_required: [],
+    matched_preferred: ["Git"],
+    experience_level: "internship",
+    source_kind: "manual",
+    overall_score: 78,
+    recommendation: "MANUAL_REVIEW",
+    decided_by: "Local Reviewer",
+    decided_at: "2026-09-28T10:00:00+00:00",
+    is_demo: false,
+    created_at: "2026-09-28T10:00:00+00:00",
+    ...overrides,
+  };
+}
+
+export function profileInsightsFixture(overrides: Partial<ProfileInsights> = {}): ProfileInsights {
+  return {
+    profile_id: 1,
+    profile_title: "Backend Engineer",
+    decisions: { total: 0, advanced: 0, rejected: 0, on_hold: 0, demo: 0 },
+    required_skills: ["Python", "SQL"],
+    patterns: [],
+    requirement_note:
+      "For this job, meeting part of the requirement list is not enough: Python, SQL are required skills, and a candidate missing any of them is capped at manual review regardless of HR patterns.",
+    enough_data: false,
+    note: "Only 0 decision(s) recorded so far — MeritOS does not infer preferences from such a small sample.",
+    advisory_only: true,
+    ...overrides,
+  };
+}
+
 export function jobFixture(overrides: Partial<Job> = {}): Job {
   return {
     id: 1,
@@ -353,6 +435,60 @@ export function jobFixture(overrides: Partial<Job> = {}): Job {
     created_at: "2026-09-25T09:00:00+00:00",
     started_at: "2026-09-25T09:00:01+00:00",
     finished_at: "2026-09-25T09:00:40+00:00",
+    requirements: {
+      required_skills: ["Python", "SQL", "Git"],
+      preferred_skills: ["React", "FastAPI"],
+      experience_requirement: "preferred",
+    },
+    match: {
+      candidates: 4,
+      priority: 1,
+      interview: 1,
+      manual: 1,
+      not_met: 1,
+      missing_required: 1,
+      decided: 1,
+      avg_score: 71.5,
+    },
+    ...overrides,
+  };
+}
+
+export function recentDecisionFixture(overrides: Partial<RecentDecision> = {}): RecentDecision {
+  return {
+    id: 11,
+    name: "Anita Rao",
+    profile_title: "Backend Engineer",
+    decision: "shortlist",
+    decision_label: "Shortlisted",
+    reason: "Strong Python evidence in the internship",
+    decided_by: "Local Reviewer",
+    decided_at: "2026-09-28T10:00:00+00:00",
+    overall_score: 78,
+    status: "SHORTLISTED",
+    is_demo: false,
+    ...overrides,
+  };
+}
+
+export function commsStatusFixture(overrides: Partial<CommsStatus> = {}): CommsStatus {
+  return {
+    provider: {
+      provider: "gmail",
+      connected: false,
+      account: null,
+      detail: "Gmail is not connected. Connect the account on the Resume Sources page to enable sending.",
+    },
+    send_policy:
+      "A draft never sends itself: generate → review and edit → approve the exact revision → " +
+      "confirm recipient, sender, subject and body on the final screen → send. Approvals expire " +
+      "after 24 hours; every attempt — including blocked ones — is written to the send log.",
+    approval_ttl_hours: 24,
+    types: [
+      { value: "interview_invitation", label: "Interview invitation" },
+      { value: "rejection", label: "Rejection" },
+    ],
+    recent_attempts: [],
     ...overrides,
   };
 }
@@ -496,8 +632,265 @@ export function sourceSyncFixture(overrides: Partial<SourceSyncRow> = {}): Sourc
   };
 }
 
+export function sourceRecordFixture(overrides: Partial<SourceRecordRow> = {}): SourceRecordRow {
+  return {
+    id: 1,
+    source_kind: "referral",
+    profile_id: 1,
+    profile_title: "Backend Engineer",
+    title: "Ravi Kumar",
+    url: "",
+    notes: "Met at the college meetup.",
+    contact_name: "Ravi Kumar",
+    contact_email: "ravi.kumar@example.com",
+    referrer: "Priya (Engineering)",
+    status: "RECORDED",
+    status_label: "Recorded",
+    resume_id: null,
+    resume_filename: null,
+    candidate_id: null,
+    candidate_name: null,
+    created_by: "Local Reviewer",
+    created_at: "2026-10-01T09:00:00+00:00",
+    updated_at: "2026-10-01T09:00:00+00:00",
+    ...overrides,
+  };
+}
+
+export function sourceRecordsFixture(overrides: Partial<SourceRecordsResponse> = {}): SourceRecordsResponse {
+  return {
+    items: [],
+    counts: { RECORDED: 0, SCREENED: 0, DISCARDED: 0, total: 0 },
+    kinds: [
+      { kind: "referral", label: "Referral", description: "A current employee recommended this person. The resume is added separately by upload." },
+      { kind: "linkedin_profile", label: "LinkedIn profile URL", description: "Paste the profile URL yourself. MeritOS never scrapes LinkedIn; the URL is kept as a reference only." },
+      { kind: "company_page", label: "Company careers page", description: "Application URL from your own careers page. Stored as a reference; nothing is fetched." },
+      { kind: "job_board", label: "Job board listing", description: "Listing URL from a job board. Stored as a reference; automated import needs an official partner API." },
+    ],
+    methods: [
+      { key: "manual_upload", label: "Manual upload", availability: "AVAILABLE", note: "Upload PDF, DOCX or TXT files to a screening profile." },
+      { key: "folder_upload", label: "Batch folder upload", availability: "AVAILABLE", note: "Pick a folder on a screening profile — every resume file inside (including subfolders) is queued." },
+      { key: "paste_text", label: "Paste resume text", availability: "AVAILABLE", note: "Paste the text straight in; it enters the same parsing and scoring pipeline as a file." },
+      { key: "csv_import", label: "CSV import", availability: "AVAILABLE", note: "Import a CSV of candidate leads. Rows with resume text are queued through the pipeline; the rest become intake records." },
+      { key: "referral", label: "Referral", availability: "MANUAL_ONLY", note: "Record who referred the candidate and attach the resume by upload." },
+      { key: "linkedin_url", label: "LinkedIn profile URL", availability: "MANUAL_ONLY", note: "Store the profile URL as a reference. No scraping — automated import needs the approved official API." },
+      { key: "company_page_url", label: "Company careers page URL", availability: "MANUAL_ONLY", note: "Store the application URL from your own careers site as a reference." },
+      { key: "linkedin_automated", label: "LinkedIn automated import", availability: "UNAVAILABLE", note: "Requires an approved official LinkedIn API connection. This build never scrapes LinkedIn." },
+      { key: "job_board_automated", label: "Job board automated import", availability: "COMING_SOON", note: "Requires official partner APIs or a paid feed. Until then, record listing URLs manually." },
+    ],
+    note: "Intake records are provenance: they say where a lead came from. A record only becomes a candidate once its resume passes through the ingestion pipeline.",
+    ...overrides,
+  };
+}
+
+export function pasteImportFixture(overrides: Partial<PasteImportResult> = {}): PasteImportResult {
+  return {
+    record_id: 3,
+    resume_id: 9,
+    job_id: 12,
+    filename: "Kabir Shah.txt",
+    chars: 220,
+    message: "Pasted resume queued for processing (220 characters).",
+    ...overrides,
+  };
+}
+
+export function csvImportFixture(overrides: Partial<CsvImportResult> = {}): CsvImportResult {
+  return {
+    profile: { id: 1, title: "Backend Engineer" },
+    total_rows: 4,
+    records_created: 2,
+    records_skipped_duplicates: 1,
+    resumes_queued: 1,
+    empty_rows: 0,
+    job_id: 12,
+    invalid_rows: [{ row: 4, reason: "Email 'not-an-email' is not a valid address." }],
+    skipped_rows: [{ row: 3, reason: "This email is already on record (#1, added 2026-10-01). Duplicate records are not created." }],
+    unrecognised_columns: ["department"],
+    note: "Rows without resume text are saved as records only — attach their resume later by upload. Nothing was fetched from any website.",
+    message: "2 record(s) added to the intake ledger, 1 resume(s) queued for processing, 1 duplicate(s) skipped, 1 row(s) rejected.",
+    ...overrides,
+  };
+}
+
+export function emailSendLogFixture(overrides: Partial<EmailSendLogRow> = {}): EmailSendLogRow {
+  return {
+    id: 1,
+    outcome: "BLOCKED_CONFIRMATION_REQUIRED",
+    outcome_label: "Blocked — confirmation not completed",
+    recipient: "aarav.mehta@example-demo.com",
+    subject: "Interview invitation — Backend Engineer",
+    sender_account: "",
+    actor: "Local Reviewer",
+    detail: "The final send confirmation was not completed, so nothing was sent.",
+    created_at: "2026-10-02T10:00:00+00:00",
+    ...overrides,
+  };
+}
+
+export function candidateEmailFixture(overrides: Partial<CandidateEmailRow> = {}): CandidateEmailRow {
+  return {
+    id: 1,
+    candidate_id: 11,
+    profile_id: 1,
+    email_type: "interview_invitation",
+    type_label: "Interview invitation",
+    recipient: "aarav.mehta@example-demo.com",
+    subject: "Interview invitation — Backend Engineer",
+    body:
+      "Dear Aarav Mehta,\n\nThank you for applying for the Backend Engineer role. " +
+      "We would like to invite you to an interview on [date] at [time].\n\nKind regards,\n[Hiring team]",
+    status: "DRAFT",
+    status_label: "Draft",
+    display_state: "DRAFT",
+    display_label: "Draft",
+    revision: 1,
+    content_hash: "",
+    approved_revision: null,
+    approved_by: "",
+    approved_at: null,
+    approval_expires_at: null,
+    approved_expired: false,
+    sent_at: null,
+    sender_account: "",
+    drafted_by: "Local Reviewer",
+    created_at: "2026-10-02T10:00:00+00:00",
+    updated_at: "2026-10-02T10:00:00+00:00",
+    last_send: null,
+    ...overrides,
+  };
+}
+
+export function candidateEmailsFixture(overrides: Partial<CandidateEmailsResponse> = {}): CandidateEmailsResponse {
+  return {
+    items: [],
+    provider: {
+      provider: "gmail",
+      connected: true,
+      account: "h***@example.com",
+      detail: "Gmail is connected for read-only intake and approved candidate-email sending.",
+    },
+    types: [
+      { value: "interview_invitation", label: "Interview invitation", hint: "Invites the candidate to an interview." },
+      { value: "shortlist_confirmation", label: "Shortlist confirmation", hint: "Confirms the candidate is moving to the next stage." },
+      { value: "rejection", label: "Rejection", hint: "A respectful close." },
+      { value: "assignment", label: "Assignment / assessment", hint: "Sends a take-home task with a deadline." },
+      { value: "follow_up", label: "Follow-up", hint: "A polite follow-up on an application in progress." },
+      { value: "general", label: "General message", hint: "A neutral skeleton for anything else." },
+    ],
+    approval_ttl_hours: 24,
+    send_policy:
+      "A draft never sends itself: generate → review and edit → approve the exact revision → confirm recipient, sender, subject and body on the final screen → send. Editing after approval invalidates the approval; approvals expire after 24 hours; every attempt — including blocked ones — is written to the send log. Emails for demo records are never sent.",
+    candidate: { id: 11, name: "Aarav Mehta", email: "aarav.mehta@example-demo.com", is_demo: false },
+    ...overrides,
+  };
+}
+
+export function sendOutcomeFixture(overrides: Partial<EmailSendOutcome> = {}): EmailSendOutcome {
+  return {
+    outcome: "SENT",
+    outcome_label: "Sent",
+    sent: true,
+    message: "The email was sent through Gmail and recorded in the send log.",
+    email: candidateEmailFixture({
+      status: "APPROVED",
+      status_label: "Approved",
+      display_state: "SENT",
+      display_label: "Sent",
+      content_hash: "abc123",
+      approved_revision: 1,
+      approved_by: "Local Reviewer",
+      approved_at: "2026-10-02T09:00:00+00:00",
+      approval_expires_at: "2026-10-03T09:00:00+00:00",
+      sent_at: "2026-10-02T10:00:00+00:00",
+      sender_account: "h***@example.com",
+    }),
+    log: [
+      { ...emailSendLogFixture({ id: 1, outcome: "SENDING", outcome_label: "Attempt started", detail: "Sending the approved version 1." }) },
+      { ...emailSendLogFixture({ id: 2, outcome: "SENT", outcome_label: "Sent", detail: "Accepted by Gmail.", sender_account: "h***@example.com" }) },
+    ],
+    ...overrides,
+  };
+}
+
+export function demoWorkspaceFixture(overrides: Partial<DemoWorkspaceOverview> = {}): DemoWorkspaceOverview {  return {
+    demo_candidates: 26,
+    real_candidates: 3,
+    demo_resumes: 28,
+    demo_jobs: 2,
+    demo_decisions: 4,
+    demo_profiles: [
+      { id: 1, title: "DEMO — Backend Engineer (Python, SQL, FastAPI)", archived: false },
+      { id: 2, title: "DEMO — Frontend Engineer (React, TypeScript)", archived: false },
+    ],
+    ...overrides,
+  };
+}
+
+export function demoStatusFixture(overrides: Partial<DemoStatus> = {}): DemoStatus {
+  return {
+    directory: "C:/data/demo",
+    exists: true,
+    files: [{ filename: "demo_01_backend.txt", bytes: 1024 }],
+    count: 1,
+    workspace: demoWorkspaceFixture(),
+    ...overrides,
+  };
+}
+
+export function demoSeedFixture(overrides: Partial<DemoSeedResult> = {}): DemoSeedResult {
+  return {
+    profiles: { backend_id: 1, frontend_id: 2 },
+    processed_jobs: 2,
+    candidates: { "1": 13, "2": 13 },
+    decisions_applied: [
+      { candidate_id: 1, decision: "shortlist" },
+      { candidate_id: 2, decision: "move_to_interview" },
+      { candidate_id: 3, decision: "hold" },
+      { candidate_id: 4, decision: "close" },
+    ],
+    note: "All seeded candidates carry is_demo=1. Real user data was not modified.",
+    ...overrides,
+  };
+}
+
+export function demoClearFixture(overrides: Partial<DemoClearResult> = {}): DemoClearResult {
+  return {
+    mode: "delete",
+    method:
+      "candidates/resumes/jobs: hard delete of is_demo=1 rows only; demo profiles: deleted; demo audit entries: deleted; stored demo files: removed from disk",
+    candidates_removed: 26,
+    resumes_removed: 28,
+    jobs_removed: 2,
+    reviews_removed: 0,
+    decisions_removed: 4,
+    audit_events_removed: 90,
+    resume_files_removed: 28,
+    profiles: { removed: [1, 2], archived: [], kept: [] },
+    real_data_preserved: { candidates: 3, note: "No row with is_demo = 0 was deleted or archived." },
+    remaining: demoWorkspaceFixture({
+      demo_candidates: 0,
+      demo_resumes: 0,
+      demo_jobs: 0,
+      demo_decisions: 0,
+      demo_profiles: [],
+    }),
+    ...overrides,
+  };
+}
+
+export function demoResetFixture(overrides: Partial<DemoResetResult> = {}): DemoResetResult {
+  return {
+    cleared: demoClearFixture(),
+    seeded: demoSeedFixture(),
+    note: "Only demo rows were removed; real candidates were not modified.",
+    ...overrides,
+  };
+}
+
 export function dashboardFixture(overrides: Partial<DashboardData> = {}): DashboardData {
   return {
+    filters: { data_scope: "all", date_range: "all" },
     candidates: {
       total: 3,
       needs_review: 2,
@@ -505,11 +898,21 @@ export function dashboardFixture(overrides: Partial<DashboardData> = {}): Dashbo
       interview_recommended: 1,
       shortlisted: 1,
       interview_stage: 0,
+      hired: 0,
       on_hold: 0,
       closed: 0,
       duplicates: 1,
       ai_failed: 0,
+      demo: 0,
+      real: 3,
     },
+    demo_workspace: demoWorkspaceFixture({
+      demo_candidates: 0,
+      demo_resumes: 0,
+      demo_jobs: 0,
+      demo_decisions: 0,
+      demo_profiles: [],
+    }),
     recommendations: {
       priority_review: 1,
       interview_recommendation: 1,
@@ -524,6 +927,7 @@ export function dashboardFixture(overrides: Partial<DashboardData> = {}): Dashbo
         title: "Backend Engineer",
         type: "recruitment",
         candidate_count: 3,
+        demo_count: 0,
         resume_count: 4,
         processed_count: 4,
         updated_at: "2026-09-25T09:00:00+00:00",
@@ -539,6 +943,7 @@ export function dashboardFixture(overrides: Partial<DashboardData> = {}): Dashbo
         created_at: "2026-09-25T09:00:00+00:00",
       },
     ],
+    recent_decisions: [],
     ...overrides,
   };
 }
