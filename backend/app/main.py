@@ -61,13 +61,24 @@ def create_app(
 
     @app.get("/api/health")
     def health():
+        from .identity import identity_payload, stability_lock_state
         from .services.settings_store import get_public_ai_settings
 
-        return {
+        payload = {
             "status": "ok",
             "version": __version__,
             "ai": get_public_ai_settings(ctx),
         }
+        # Permanent, non-sensitive application identity. Frontends use
+        # application_id to refuse cross-project backends (ENMA vs MeritOS vs
+        # QResolve). Never contains tokens, paths, or host details.
+        payload.update(identity_payload())
+        try:
+            payload["stability_lock"] = stability_lock_state()
+        except Exception:
+            # Identity reporting must not depend on the temporary policy file.
+            pass
+        return payload
 
     for router in (
         profiles.router,

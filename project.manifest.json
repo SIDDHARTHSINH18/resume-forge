@@ -1,0 +1,15 @@
+{
+  "project_name": "MeritOS",
+  "application_id": "meritos",
+  "repository_root": "C:\\Users\\SV\\Downloads\\AI LISTER",
+  "backend_dev_port": 8421,
+  "frontend_dev_port": 5421,
+  "policy_version": "1.0.0",
+  "policy": "project-stability-lock",
+  "policy_duration_days": 28,
+  "policy_expiration_date": "2026-11-05",
+  "sibling_projects": {
+    "enma": { "repository": "C:\\Users\\SV\\Downloads\\ghost-main\\ghost-main", "backend_port": 8000, "frontend_port": 5177 },
+    "qresolve": { "repository": "C:\\Users\\SV\\Downloads\\QResolve", "backend_port": 8321, "frontend_port": 5321 }
+  }
+}
