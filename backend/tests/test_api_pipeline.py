@@ -311,6 +311,28 @@ def test_csv_export(env):
     assert history and history[0]["data"]["count"] == 1
 
 
+def test_csv_export_neutralises_spreadsheet_formulas(env):
+    """Resume-derived text must never open as an executable formula in Excel.
+
+    Extraction filters most of this already; the export layer must neutralise
+    hostile cells regardless of where the text came from, so this test injects
+    the hostile value directly into the stored candidate record.
+    """
+    profile_id = create_profile(env.client)
+    upload_and_process(env.client, profile_id, [_txt("f.txt", sample_resume_text("Plain Name", "plain@example.com"))])
+    candidate_id = env.client.get(f"/api/candidates?profile_id={profile_id}").json()["items"][0]["id"]
+    conn = env.ctx.connect()
+    try:
+        conn.execute("UPDATE candidates SET name = ? WHERE id = ?", ("=SUM(A1:A9)", candidate_id))
+    finally:
+        conn.close()
+
+    response = env.client.post(f"/api/candidates/export?profile_id={profile_id}")
+    assert response.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
+    assert rows[0]["Name"] == "'=SUM(A1:A9)"
+
+
 def test_export_with_no_matches_returns_404(env):
     profile_id = create_profile(env.client)
     response = env.client.post(f"/api/candidates/export?profile_id={profile_id}&search=nobody")

@@ -14,6 +14,21 @@ from ..audit import record
 from ..scoring import RECOMMENDATION_LABELS
 from .candidates import DECISION_LABELS, STATUS_LABELS, list_candidates
 
+UNSAFE_CELL_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value):
+    """Neutralise spreadsheet formula injection.
+
+    Excel and Google Sheets interpret a cell starting with =, +, - or @ as a
+    formula, so resume-derived text could execute on the reviewer's machine.
+    Prefixing an apostrophe forces the cell to be read as literal text.
+    """
+    if isinstance(value, str) and value.startswith(UNSAFE_CELL_PREFIXES):
+        return "'" + value
+    return value
+
+
 COLUMNS = [
     ("Name", "name"),
     ("Email", "email"),
@@ -73,10 +88,10 @@ def export_csv(conn, params: dict) -> tuple[str, bytes, int]:
     writer = csv.DictWriter(buffer, fieldnames=[label for label, _ in COLUMNS], lineterminator="\r\n")
     writer.writeheader()
     for row in rows:
-        writer.writerow({label: row.get(key, "") for label, key in COLUMNS})
+        writer.writerow({label: csv_safe(row.get(key, "")) for label, key in COLUMNS})
 
     profile_part = f"profile-{params['profile_id']}" if params.get("profile_id") else "all-profiles"
-    filename = f"candidates-{profile_part}.csv"
+    filename = f"meritos-candidates-{profile_part}.csv"
     record(
         conn,
         "export_generated",
